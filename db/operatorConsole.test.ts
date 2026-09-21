@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { GrowthProspectDetail, GrowthProspectSummary } from '../src/growthTypes'
 import { createOperatorConsoleHandler } from './operatorConsole'
 import type { AcquisitionConsoleRepository } from './acquisitionConsole'
+import type { DiscoveryCandidate, ProspectDiscoveryProvider } from '../src/prospectDiscovery'
 
 const ORIGIN = 'https://livingpulse.example'
 const prospect: GrowthProspectSummary = { id: 'prospect-1', businessName: 'Public Coffee', industry: 'Hospitality', locationText: 'Bristol', qualificationStatus: 'pending', outreachStatus: 'not_contacted', attemptCount: 0, sourceType: 'business_website' }
@@ -37,7 +38,9 @@ function setup(authenticated = true) {
     queueProspect: vi.fn(async () => ({ prospect, attempt: { id: 'attempt-1' } })),
     createProspect: vi.fn(async () => prospect),
   }
-  return { handler: createOperatorConsoleHandler({ authenticated: async () => authenticated, repository, services }), repository, services }
+  const discoveryCandidate: DiscoveryCandidate = { businessName: 'Public Coffee', industry: 'Hospitality', locationText: 'Bristol', websiteUrl: 'https://publiccoffee.example', sourceType: 'business_website', sourceUrl: 'https://publiccoffee.example/contact', sourceObservedAt: '2026-09-21T10:00:00Z', evidenceNote: 'The contact page identifies the business.', potentialUseCase: 'Could test customer interest in a menu idea.', personalizationContext: null, personalizationEvidence: null, publicEmailEvidence: { email: 'hello@publiccoffee.example', sourceUrl: 'https://publiccoffee.example/contact', observedText: 'Email hello@publiccoffee.example' } }
+  const discoveryProvider: ProspectDiscoveryProvider = { id: 'test_public_search', discover: vi.fn(async () => [discoveryCandidate]) }
+  return { handler: createOperatorConsoleHandler({ authenticated: async () => authenticated, repository, services, discoveryProvider, prospectExistsByEmail: async () => false }), repository, services, discoveryProvider }
 }
 
 const request = (path: string, init: RequestInit = {}) => new Request(`${ORIGIN}/api/operator/${path}`, init)
@@ -82,6 +85,32 @@ describe('operator console authentication and reads', () => {
 })
 
 describe('operator console mutations', () => {
+  it('discovers ephemerally with validated criteria and imports only after an explicit request', async () => {
+    const state = setup()
+    const discovery = await state.handler(mutation('prospects/discover', { criteria: { category: 'Cafe', location: 'Bristol', maxResults: 1 } }))
+    expect(discovery.status).toBe(200)
+    expect(state.services.createProspect).not.toHaveBeenCalled()
+    const body = await discovery.json() as { candidates: DiscoveryCandidate[] }
+    expect((await state.handler(mutation('prospects/import', { candidate: body.candidates[0] }))).status).toBe(201)
+    expect(state.services.createProspect).toHaveBeenCalledOnce()
+    expect(state.services.qualifyProspect).not.toHaveBeenCalled()
+    expect(state.services.queueProspect).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid criteria before invoking discovery', async () => {
+    const state = setup()
+    expect((await state.handler(mutation('prospects/discover', { criteria: { category: '', location: 'Bristol', maxResults: 11 } }))).status).toBe(409)
+    expect(state.discoveryProvider.discover).not.toHaveBeenCalled()
+  })
+
+  it('returns a safe service-unavailable response when live discovery is not configured', async () => {
+    const state = setup()
+    state.discoveryProvider.discover = vi.fn(async () => { throw new (await import('../src/prospectDiscovery')).DiscoveryProviderUnavailableError() })
+    const response = await state.handler(mutation('prospects/discover', { criteria: { category: 'Cafe', location: 'Bristol', maxResults: 1 } }))
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({ error: expect.stringMatching(/not configured/i) })
+    expect(state.services.createProspect).not.toHaveBeenCalled()
+  })
   it('delegates qualification and required-reason rejection to application services', async () => {
     const state = setup()
     expect((await state.handler(mutation('prospects/prospect-1/qualify'))).status).toBe(200)
