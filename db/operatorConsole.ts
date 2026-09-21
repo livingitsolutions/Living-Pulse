@@ -16,6 +16,11 @@ type MutationServices = {
 
 const suppressionReasons = ['manual', 'unsubscribe', 'bounce', 'complaint', 'invalid'] as const
 const json = (body: unknown, status = 200) => Response.json(body, { status })
+const safeFailure = (message = 'The request could not be completed.', status = 409) => json({ error: message }, status)
+
+function logFailure(classification: 'discovery_provider_unavailable' | 'discovery_internal' | 'operator_request_rejected') {
+  console.error('Growth operator request failed', { classification })
+}
 
 export function createOperatorConsoleHandler(dependencies: {
   authenticated(request: Request): Promise<boolean>
@@ -31,10 +36,16 @@ export function createOperatorConsoleHandler(dependencies: {
 
     try {
       if (request.method === 'POST' && parts.join('/') === 'prospects/discover') {
-        const body = await request.json() as { criteria?: unknown }
-        const discovered = await runDiscovery(dependencies.discoveryProvider, body.criteria)
-        const candidates = await Promise.all(discovered.map(async (candidate) => ({ ...candidate, existingProspect: await dependencies.prospectExistsByEmail(normalizeEmail(candidate.publicEmailEvidence.email)) })))
-        return json({ provider: dependencies.discoveryProvider.id, candidates })
+        try {
+          const body = await request.json() as { criteria?: unknown }
+          const discovered = await runDiscovery(dependencies.discoveryProvider, body.criteria)
+          const candidates = await Promise.all(discovered.map(async (candidate) => ({ ...candidate, existingProspect: await dependencies.prospectExistsByEmail(normalizeEmail(candidate.publicEmailEvidence.email)) })))
+          return json({ provider: dependencies.discoveryProvider.id, candidates })
+        } catch (error) {
+          const unavailable = error instanceof DiscoveryProviderUnavailableError
+          logFailure(unavailable ? 'discovery_provider_unavailable' : 'discovery_internal')
+          return safeFailure('Discovery could not be completed.', unavailable ? 503 : 409)
+        }
       }
       if (request.method === 'POST' && parts.join('/') === 'prospects/import') {
         const body = await request.json() as { candidate?: DiscoveryCandidate }
@@ -80,9 +91,9 @@ export function createOperatorConsoleHandler(dependencies: {
         }
       }
       return json({ error: 'Not found' }, 404)
-    } catch (error) {
-      const status = error instanceof DiscoveryProviderUnavailableError ? 503 : 409
-      return json({ error: error instanceof Error ? error.message : 'The request could not be completed.' }, status)
+    } catch {
+      logFailure('operator_request_rejected')
+      return safeFailure()
     }
   }
 }
