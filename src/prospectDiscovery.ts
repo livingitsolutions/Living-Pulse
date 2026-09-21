@@ -3,7 +3,7 @@ import { SOURCE_TYPES, type ProspectInput, type SourceType } from './acquisition
 export const MAX_DISCOVERY_RESULTS = 10
 export const DISCOVERY_TIMEOUT_MS = 8_000
 const MAX_TEXT = 2_000
-const MAX_EVIDENCE_EXCERPT = 1_000
+export const MAX_EVIDENCE_EXCERPT = 1_000
 
 export type DiscoveryCriteria = { category: string; location: string; maxResults: number }
 export type DiscoveryCandidate = {
@@ -75,7 +75,7 @@ export function validateDiscoveryCandidate(value: DiscoveryCandidate): Discovery
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('An observed public business email is required for acquisition intake.')
   if (!isSafePublicUrl(value.publicEmailEvidence?.sourceUrl)) throw new Error('A safe public HTTP(S) source supporting the public email is required.')
   const observedText = bounded(value.publicEmailEvidence?.observedText, 'Email evidence excerpt', true, MAX_EVIDENCE_EXCERPT)
-  if (!observedText.includes(email)) throw new Error('Email evidence must contain the exact observed address; guessed emails are not accepted.')
+  if (!observedText.toLocaleLowerCase('en-US').includes(email.toLocaleLowerCase('en-US'))) throw new Error('Email evidence must contain the exact observed address; guessed emails are not accepted.')
   if (value.websiteUrl && !isSafePublicUrl(value.websiteUrl)) throw new Error('Website URL must be a safe public HTTP(S) URL.')
   if (value.personalizationEvidence && !isSafePublicUrl(value.personalizationEvidence)) throw new Error('Personalization evidence must use a safe public HTTP(S) URL.')
   if (value.personalizationContext?.trim() && !value.personalizationEvidence) throw new Error('Personalization requires a safe public HTTP(S) evidence URL.')
