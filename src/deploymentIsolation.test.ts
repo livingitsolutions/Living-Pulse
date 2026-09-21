@@ -1,4 +1,4 @@
-import { access, readFile, readdir } from 'node:fs/promises'
+import { access, readFile, readdir, realpath } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -9,6 +9,7 @@ const read = (path: string) => readFile(path, 'utf8')
 const exists = (path: string) => access(path).then(() => true, () => false)
 const publicPackageDirectory = 'deploy/public'
 const growthPackageDirectory = 'deploy/growth'
+const growthMigrationDirectory = `${growthPackageDirectory}/netlify/database/migrations`
 const isolatedPublicBase = 'deploy/public-site'
 const operatorPaths = [
   'login',
@@ -35,7 +36,7 @@ describe('public deployment composition', () => {
     const lock = JSON.parse(lockText) as { packages: Record<string, unknown> }
     expect({ ...manifest.dependencies, ...manifest.devDependencies }).not.toHaveProperty('@netlify/database')
     expect(Object.keys(lock.packages)).not.toContain('node_modules/@netlify/database')
-    expect(await exists(`${isolatedPublicBase}/netlify/database/migrations`)).toBe(false)
+    expect(await exists(join(isolatedPublicBase, 'netlify', 'database', 'migrations'))).toBe(false)
   })
 
   it('contains only the Public function and HTTP Product Service client', async () => {
@@ -78,8 +79,8 @@ describe('public deployment composition', () => {
   })
 
   it('cannot discover Netlify Database migrations in its package directory', async () => {
-    expect(await exists(`${publicPackageDirectory}/netlify/database/migrations`)).toBe(false)
-    expect(await exists('netlify/database/migrations')).toBe(true)
+    expect(await exists(join(publicPackageDirectory, 'netlify', 'database', 'migrations'))).toBe(false)
+    expect(await exists(growthMigrationDirectory)).toBe(true)
   })
 
   it('retains public Pulse, Results, response, feedback, lifecycle, and telemetry routes', async () => {
@@ -130,19 +131,31 @@ describe('Growth deployment composition', () => {
       '20260921124959_create_product_idempotency/snapshot.json': '876bf74e0a5485408dc0c543c88cf02d5fa09b6cfa7a5f8504ab4c3af6f6507b',
     }
     for (const [path, checksum] of Object.entries(checksums)) {
-      const content = await readFile(join('netlify/database/migrations', path))
+      const content = await readFile(join(growthMigrationDirectory, path))
       expect(createHash('sha256').update(content).digest('hex')).toBe(checksum)
     }
+
+    expect(await realpath('netlify/database/migrations')).toBe(
+      await realpath(growthMigrationDirectory),
+    )
   })
 
   it('uses a dedicated frontend entry and private functions directory', async () => {
-    const [entry, config, netlifyConfig] = await Promise.all([read('growth/main.tsx'), read('vite.growth.config.ts'), read(`${growthPackageDirectory}/netlify.toml`)])
+    const [entry, config, netlifyConfig, rootManifest, growthManifest] = await Promise.all([
+      read('growth/main.tsx'),
+      read('vite.growth.config.ts'),
+      read(`${growthPackageDirectory}/netlify.toml`),
+      read('package.json'),
+      read(`${growthPackageDirectory}/package.json`),
+    ])
     expect(entry).toMatch(/GrowthConsole/)
     expect(config).toContain("outDir: '../dist-growth'")
     expect(netlifyConfig).toContain('directory = "netlify/growth-functions"')
     expect(netlifyConfig).toContain('command = "npm run build:growth"')
     expect(netlifyConfig).toContain('publish = "dist-growth"')
-    expect(netlifyConfig).toContain('path = "netlify/database/migrations"')
+    expect(netlifyConfig).toContain('path = "deploy/growth/netlify/database/migrations"')
+    expect(JSON.parse(rootManifest).workspaces).toContain(growthPackageDirectory)
+    expect(JSON.parse(growthManifest).name).toBe('living-pulse-growth')
     expect(netlifyConfig).not.toMatch(/from = "\/api\/(?:operator|product-service)\/\*"[\s\S]*?status = 404/)
     expect(await read('netlify/growth-functions/api.mts')).toContain("path: ['/api/operator/*', '/api/product-service/*']")
   })
