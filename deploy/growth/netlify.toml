@@ -5,6 +5,9 @@
 [functions]
   directory = "netlify/growth-functions"
 
+[database.migrations]
+  path = "netlify/database/migrations"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
