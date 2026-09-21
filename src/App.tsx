@@ -51,6 +51,16 @@ function Landing() {
     ['Real Estate', 'Unit types · locations · amenities'], ['SaaS', 'Features · integrations · pricing'],
     ['Events', 'Topics · venues · dates'],
   ]
+  const faqs = [
+    ['What is Living Pulse?', 'Living Pulse is a simple way to test customer interest before you invest in a new product, service, feature, schedule, location, or idea. Create a question, share it with a link or QR code, and see how people respond.'],
+    ['What is a Pulse?', 'A Pulse is a simple question you share with customers to test an idea. For example, a café could ask, “Would you use Sunday delivery?” and measure the responses before deciding whether to offer it.'],
+    ['Is Living Pulse a survey tool?', 'Not exactly. Living Pulse is designed for quick demand and intent testing rather than long surveys. The goal is to help you answer a specific business question before making a decision.'],
+    ['Do my customers need an account to respond?', 'No. Customers can open your Pulse and respond without creating an account or logging in.'],
+    ['How do I share a Pulse?', 'Each published Pulse gets a shareable link and QR code. You can put it on social media, your website, a menu, poster, counter display, email, or anywhere your customers can access it.'],
+    ['What can I test with Living Pulse?', 'You can test things like a new menu item, product, service, class, feature, delivery option, opening hours, event, property preference, pricing direction, or almost any idea where customer interest could help inform your decision.'],
+    ['Does a positive response guarantee customers will buy?', 'No. Living Pulse measures declared interest and intent. Responses can help inform a decision, but they do not guarantee purchases, revenue, or the success of an idea.'],
+    ['Is Living Pulse free?', "Living Pulse is currently free to try while we're validating and improving the product. If paid plans are introduced later, we'll make pricing clear before charging for anything."],
+  ]
   return <>
     <header className="nav landing-nav"><Logo /><nav aria-label="Main navigation"><a href="#how-it-works">How it works</a><a href="#use-cases">Use cases</a><a href="#faq">FAQ</a></nav><ButtonLink to="/create">Create a Free Pulse</ButtonLink></header>
     <main className="landing">
@@ -60,8 +70,9 @@ function Landing() {
       </section>
       <section className="thinking reveal-on-scroll" id="how-it-works"><div><p className="eyebrow">How it works</p><blockquote>“Should we offer<br />Sunday delivery?”</blockquote></div><ol className="flow">{steps.map(({ name, description, icon: Icon }, i) => <li key={name}><span>0{i + 1}</span><Icon aria-hidden="true" /><b>{name}</b><p>{description}</p></li>)}</ol></section>
       <section className="uses reveal-on-scroll" id="use-cases"><div><p className="eyebrow">Built for everyday decisions</p><h2>Every business has a decision worth testing.</h2></div><div className="industry-list">{industries.map(([name, example], i) => <span key={name}><b>{String(i + 1).padStart(2, '0')}</b><strong>{name}</strong><em>{example}</em></span>)}</div></section>
+      <section className="faq reveal-on-scroll" id="faq"><div className="faq-inner"><div className="faq-heading"><p className="eyebrow">FAQ</p><h2>Questions before<br />your first Pulse.</h2></div><div className="faq-list">{faqs.map(([question, answer]) => <details key={question}><summary><span>{question}</span><i aria-hidden="true" /></summary><p>{answer}</p></details>)}</div></div></section>
       <section className="bottom-cta reveal-on-scroll"><div><p>Ask before you invest.</p><ButtonLink to="/create">Create a Free Pulse</ButtonLink></div></section>
-    </main><footer id="faq"><Logo /><span>Declared interest, not guaranteed demand.</span></footer>
+    </main><footer><Logo /><span>Declared interest, not guaranteed demand.</span></footer>
   </>
 }
 
