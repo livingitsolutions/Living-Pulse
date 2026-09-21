@@ -8,7 +8,9 @@ export type OutreachStatus = 'not_contacted' | 'queued' | 'sent' | 'replied' | '
 export type SuppressionReason = 'unsubscribe' | 'bounce' | 'complaint' | 'manual' | 'invalid'
 
 export type Prospect = {
+  id?: string
   businessName: string
+  websiteUrl?: string | null
   publicContactEmail: string
   normalizedEmail: string
   sourceUrl: string
@@ -19,6 +21,8 @@ export type Prospect = {
   outreachStatus: OutreachStatus
   personalizationContext: string | null
   personalizationEvidence: string | null
+  industry?: string | null
+  locationText?: string | null
 }
 
 export type ProspectInput = Omit<Prospect, 'normalizedEmail' | 'qualificationStatus' | 'rejectionReason' | 'outreachStatus'>
@@ -39,10 +43,13 @@ export function normalizeEmail(email: string) {
 
 export function createProspect(input: ProspectInput): Prospect {
   const normalizedEmail = normalizeEmail(input.publicContactEmail)
+  if (!input.businessName.trim()) throw new Error('Business name is required.')
+  if (!SOURCE_TYPES.includes(input.sourceType)) throw new Error('A valid source type is required.')
   if (!emailPattern.test(normalizedEmail)) throw new Error('A valid publicly listed business email is required.')
   if (!isPublicSourceUrl(input.sourceUrl) || !input.sourceObservedAt || Number.isNaN(input.sourceObservedAt.getTime())) throw new Error('Public source evidence is required.')
   if (input.personalizationContext?.trim() && !input.personalizationEvidence?.trim()) throw new Error('Personalization facts require public evidence.')
-  return { ...input, businessName: input.businessName.trim(), publicContactEmail: input.publicContactEmail.trim(), normalizedEmail, sourceUrl: input.sourceUrl.trim(), qualificationStatus: 'pending', rejectionReason: null, outreachStatus: 'not_contacted' }
+  const optional = (value: string | null | undefined) => value?.trim() || null
+  return { ...input, businessName: input.businessName.trim(), websiteUrl: optional(input.websiteUrl), industry: optional(input.industry), locationText: optional(input.locationText), publicContactEmail: input.publicContactEmail.trim(), normalizedEmail, sourceUrl: input.sourceUrl.trim(), personalizationContext: optional(input.personalizationContext), personalizationEvidence: optional(input.personalizationEvidence), qualificationStatus: 'pending', rejectionReason: null, outreachStatus: 'not_contacted' }
 }
 
 function isPublicSourceUrl(value: string) {
@@ -75,9 +82,10 @@ export function isSendingEnabled(environment: Record<string, string | undefined>
 export function assertQueueEligible(prospect: Prospect, suppressed: boolean, attemptCount: number) {
   if (suppressed || prospect.outreachStatus === 'suppressed') throw new Error('Suppressed addresses cannot be queued.')
   if (prospect.qualificationStatus !== 'qualified') throw new Error('Only qualified prospects can be queued.')
-  if (!prospect.sourceUrl || !emailPattern.test(prospect.normalizedEmail)) throw new Error('Valid public source evidence and email are required.')
+  if (!isPublicSourceUrl(prospect.sourceUrl) || !prospect.sourceObservedAt || Number.isNaN(prospect.sourceObservedAt.getTime()) || !emailPattern.test(prospect.normalizedEmail)) throw new Error('Valid public source evidence and email are required.')
   if (attemptCount >= MAX_OUTREACH_ATTEMPTS) throw new Error('Maximum outreach attempts reached.')
-  if (prospect.outreachStatus !== 'not_contacted' && prospect.outreachStatus !== 'sent') throw new Error('Prospect is already active or cannot be queued.')
+  if (attemptCount !== 0) throw new Error('Initial outreach attempt already exists.')
+  if (prospect.outreachStatus !== 'not_contacted') throw new Error('Prospect is already active or cannot be queued.')
 }
 
 export function transitionOutreach(current: OutreachStatus, next: OutreachStatus): OutreachStatus {
