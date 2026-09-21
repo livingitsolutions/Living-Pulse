@@ -62,7 +62,7 @@ const lock = JSON.parse(await readFile(join(base, 'package-lock.json'), 'utf8'))
 const dependencyNames = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })
 if (dependencyNames.includes('@netlify/database')) failures.push('Public manifest contains @netlify/database')
 if (Object.keys(lock.packages ?? {}).some((path) => path === 'node_modules/@netlify/database')) failures.push('Public lockfile contains @netlify/database')
-await access(join(base, 'netlify/database/migrations')).then(
+await access(join(base, 'netlify', 'database', 'migrations')).then(
   () => failures.push('Public base contains Netlify Database migrations'),
   () => undefined,
 )

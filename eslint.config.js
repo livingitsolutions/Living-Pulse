@@ -5,6 +5,6 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'netlify/database/migrations'] },
+  { ignores: ['dist', 'deploy/growth/netlify/database/migrations'] },
   { extends: [js.configs.recommended, ...tseslint.configs.recommended], files: ['**/*.{ts,tsx,mts}'], languageOptions: { ecmaVersion: 2022, globals: { ...globals.browser, ...globals.node } }, plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh }, rules: { ...reactHooks.configs.recommended.rules, 'react-refresh/only-export-components': ['warn', { allowConstantExport: true }] } },
 )

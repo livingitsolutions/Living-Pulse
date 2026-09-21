@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { PGlite } from '@electric-sql/pglite'
 import { describe, expect, it } from 'vitest'
 
-const migrationPath = 'netlify/database/migrations/20260921190000_reconcile_production_prospect_discovery_evidence/migration.sql'
+const migrationPath = 'deploy/growth/netlify/database/migrations/20260921190000_reconcile_production_prospect_discovery_evidence/migration.sql'
 
 async function discoveryColumns(db: PGlite) {
   const result = await db.query<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }>(`

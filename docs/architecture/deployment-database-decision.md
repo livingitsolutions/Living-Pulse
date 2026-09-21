@@ -21,7 +21,7 @@ The decision keeps existing data in place, uses one migration owner, avoids an u
 - Initialization: `drizzle({ schema })`; no connection argument is supplied.
 - Schema: `db/schema.ts`.
 - Drizzle Kit: `drizzle.config.ts`, PostgreSQL dialect.
-- Migration output: `netlify/database/migrations`, explicitly selected only by `deploy/growth/netlify.toml`.
+- Migration output: `deploy/growth/netlify/database/migrations`, explicitly selected only by `deploy/growth/netlify.toml` using a repository-root-relative path. The conventional root path is a compatibility symlink to this directory for applied-migration validation.
 - Database package: `@netlify/database` is installed, but application code does not directly call `getDatabase` or `getConnectionString`.
 - Explicit connection environment: no `DATABASE_URL`, PostgreSQL URL, or other connection string is referenced in repository code or configuration.
 - Other clients: none. There is no `pg`, external ORM, or separately initialized database client.
@@ -41,7 +41,7 @@ Netlify automatically applies discovered migrations immediately before productio
 | `netlify/growth-functions/api.mts` | GROWTH | Composes operator and acquisition consumers |
 | `scripts/import-prospects.ts` | GROWTH / internal operation | Uses acquisition validation and persistence for explicit internal intake |
 | `db/index.ts` and `db/schema.ts` | SHARED | One adapter and schema used by both compositions |
-| `drizzle.config.ts`, `netlify/database/migrations/*`, and `deploy/growth/netlify.toml` | MIGRATION / DEPLOYMENT | Schema generation and Growth-only platform-applied migrations |
+| `drizzle.config.ts`, `deploy/growth/netlify/database/migrations/*`, and `deploy/growth/netlify.toml` | MIGRATION / DEPLOYMENT | Schema generation and Growth-only platform-applied migrations |
 
 Pure domain modules and their tests do not instantiate or query a database.
 
@@ -85,7 +85,7 @@ Evidence reviewed:
 
 - [Netlify Database overview](https://docs.netlify.com/build/data-and-storage/netlify-database/): describes a fully managed database, production main database, deploy-preview branches, and platform-managed migrations.
 - [Getting started](https://docs.netlify.com/build/data-and-storage/netlify-database/getting-started/): describes adding/provisioning a database for a project/site and automatic provisioning on deploy.
-- [Migrations](https://docs.netlify.com/build/data-and-storage/netlify-database/migrations/): documents automatic migration application from `netlify/database/migrations` during each site's deploy lifecycle and optional manual migration management.
+- [Migrations](https://docs.netlify.com/build/data-and-storage/netlify-database/migrations/): documents automatic migration application from a configured migration directory during each site's deploy lifecycle and optional manual migration management.
 - [API reference](https://docs.netlify.com/build/data-and-storage/netlify-database/api/): documents `getConnectionString`, an optional `connectionString` for `getDatabase`, and REST endpoints scoped as `/sites/{site_id}/database`.
 
 The documentation proves that:
