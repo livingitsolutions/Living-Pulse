@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 describe('acquisition security boundary', () => {
   it('does not expose acquisition through the public API', async () => {
     const api = await readFile('netlify/functions/api.mts', 'utf8')
-    expect(api).not.toMatch(/acquisitionProspects|prospects:import|queueProspect|createProspectServices/)
+    expect(api).not.toMatch(/acquisitionProspects|prospects:import|createProspectServices|operatorConsole|hasOperatorSession|queueProspect/)
   })
   it('does not access Resend or its API key', async () => {
     const files = ['src/prospectServices.ts', 'src/prospectImport.ts', 'db/prospectStore.ts', 'db/acquisitionApplication.ts', 'scripts/import-prospects.ts']

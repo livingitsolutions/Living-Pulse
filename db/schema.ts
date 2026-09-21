@@ -116,3 +116,37 @@ export const acquisitionAuditEvents = pgTable('acquisition_audit_events', {
   index('acquisition_audit_events_prospect_created_idx').on(table.prospectId, table.createdAt),
   check('acquisition_audit_events_name_check', sql`${table.name} in ('prospect_created', 'prospect_qualified', 'prospect_rejected', 'prospect_queued', 'prospect_suppressed', 'outreach_attempt_created', 'outreach_marked_sent', 'prospect_marked_replied', 'prospect_marked_converted')`),
 ])
+
+export const operatorSessions = pgTable('operator_sessions', {
+  tokenHash: text('token_hash').primaryKey(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  index('operator_sessions_expires_at_idx').on(table.expiresAt),
+])
+
+export const operatorLoginAttempts = pgTable('operator_login_attempts', {
+  id: serial('id').primaryKey(),
+  clientHash: text('client_hash').notNull(),
+  attemptedAt: timestamp('attempted_at', { withTimezone: true }).notNull(),
+}, (table) => [
+  index('operator_login_attempts_client_time_idx').on(table.clientHash, table.attemptedAt),
+])
+
+export const productOperationIdempotency = pgTable('product_operation_idempotency', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  operationScope: text('operation_scope').notNull(),
+  idempotencyKeyHash: text('idempotency_key_hash').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  status: text('status').default('in_progress').notNull(),
+  resourceType: text('resource_type'),
+  resourceId: text('resource_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('product_idempotency_scope_key_unique').on(table.operationScope, table.idempotencyKeyHash),
+  index('product_idempotency_created_at_idx').on(table.createdAt),
+  check('product_idempotency_status_check', sql`${table.status} in ('in_progress', 'completed')`),
+])

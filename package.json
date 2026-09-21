@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:public",
+    "build:public": "tsc -b && vite build --config vite.public.config.ts",
+    "build:growth": "tsc -b && vite build --config vite.growth.config.ts",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "test": "vitest run",
