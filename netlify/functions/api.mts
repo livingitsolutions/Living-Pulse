@@ -50,7 +50,7 @@ export default async (req: Request) => {
     const id = parts[1]
     if (!id) return bad('Not found', 404)
     if (req.method === 'GET' && parts[0] === 'pulses' && parts.length === 2) {
-      const [pulse] = await db.select({ id: pulses.id, businessName: pulses.businessName, idea: pulses.idea, question: pulses.question, options: pulses.options, followUp: pulses.followUp, allowUpdates: pulses.allowUpdates, status: pulses.status, createdAt: pulses.createdAt }).from(pulses).where(eq(pulses.id, id)).limit(1)
+      const [pulse] = await db.select({ id: pulses.id, businessName: pulses.businessName, idea: pulses.idea, question: pulses.question, options: pulses.options, followUp: pulses.followUp, allowUpdates: pulses.allowUpdates, createdAt: pulses.createdAt }).from(pulses).where(eq(pulses.id, id)).limit(1)
       return pulse ? json(pulse) : bad('Pulse not found', 404)
     }
     if (req.method === 'POST' && parts[2] === 'responses') {
@@ -68,12 +68,14 @@ export default async (req: Request) => {
       return json({ ok: true }, 201)
     }
     if (req.method === 'GET' && parts[2] === 'results') {
-      const pulse = await owned(id, clean(url.searchParams.get('key'), 80))
+      const pulse = await owned(id, clean(req.headers.get('x-creator-key'), 80))
       if (!pulse) return bad('Results access denied', 403)
       const rows = await db.select().from(responses).where(eq(responses.pulseId, id))
       const total = rows.length
       const aggregate = (options: typeof pulse.options, field: 'optionId' | 'followUpOptionId') => options.map((option) => { const optionCount = rows.filter((row) => row[field] === option.id).length; return { ...option, count: optionCount, percentage: total ? Math.round(optionCount / total * 100) : 0 } })
-      return json({ pulse, total, options: aggregate(pulse.options, 'optionId'), followUp: pulse.followUp ? aggregate(pulse.followUp.options, 'followUpOptionId') : [], updateOptIns: rows.filter((row) => row.email).length })
+      const { creatorKey, ...safePulse } = pulse
+      void creatorKey
+      return json({ pulse: safePulse, total, options: aggregate(pulse.options, 'optionId'), followUp: pulse.followUp ? aggregate(pulse.followUp.options, 'followUpOptionId') : [], updateOptIns: rows.filter((row) => row.email).length })
     }
     if (req.method === 'PATCH' && parts[2] === 'status') {
       const body = await req.json() as Record<string, unknown>
@@ -91,8 +93,8 @@ export default async (req: Request) => {
       return json({ ok: true }, 201)
     }
     return bad('Not found', 404)
-  } catch (error) {
-    console.error('API request failed', error instanceof Error ? error.message : 'Unknown error')
+  } catch {
+    console.error('API request failed')
     return bad('The request could not be completed.', 500)
   }
 }

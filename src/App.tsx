@@ -1,14 +1,26 @@
 import { useEffect, useState } from 'react'
-import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { ArrowRight, BarChart3, Check, CircleCheck, Clipboard, Download, ExternalLink, Lightbulb, Plus, QrCode, Trash2, Users } from 'lucide-react'
 import QRCode from 'qrcode'
 import { api } from './api'
 import { poweredByPath, preserveAttribution } from './acquisition'
-import type { FollowUp, Pulse, PulseOption, Results } from './types'
+import { creatorKeyFromLocation, privateResultsPath, publishedPath } from './creatorAccess'
+import { statusDescriptions, statusOptions } from './lifecycle'
+import { publicPulsePath, publicPulseUrl } from './publicPulse'
+import type { FollowUp, PublicPulse, PulseOption, Results } from './types'
 import { hasEnoughOptions } from './validation'
 
 const newOption = (label = ''): PulseOption => ({ id: crypto.randomUUID(), label })
-const statusOptions = ['Draft', 'Testing', 'Planned', 'Coming Soon', 'Launched', 'Archived']
+
+function usePublicPulseSharing(id: string) {
+  const url = publicPulseUrl(window.location.origin, id)
+  const [qr, setQr] = useState('')
+  const [copied, setCopied] = useState(false)
+  useEffect(() => { void QRCode.toDataURL(url, { width: 640, margin: 2, color: { dark: '#20241f', light: '#f8f5ed' } }).then(setQr) }, [url])
+  async function copy() { await navigator.clipboard.writeText(url); setCopied(true); void api.event('pulse_link_copied', id); setTimeout(() => setCopied(false), 1800) }
+  function download() { const link = document.createElement('a'); link.href = qr; link.download = `living-pulse-${id}.png`; link.click(); void api.event('qr_downloaded', id) }
+  return { url, qr, copied, copy, download }
+}
 
 function PulseMark({ decorative = true }: { decorative?: boolean }) {
   return <svg className="pulse-mark" viewBox="0 0 36 36" role={decorative ? undefined : 'img'} aria-hidden={decorative || undefined} aria-label={decorative ? undefined : 'Living Pulse signal mark'}><path d="M2 18h6l4-9 6 18 5-14 4 5h7" /></svg>
@@ -93,7 +105,7 @@ function Create() {
   const [allowUpdates, setAllowUpdates] = useState(false)
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   useEffect(() => { void api.event('create_started', acquisition?.sourcePulseId, acquisition || undefined) }, [acquisition])
-  async function submit(e: React.FormEvent) { e.preventDefault(); setError(''); if (!hasEnoughOptions(options)) return setError('Add at least two response options.'); if (hasFollowUp && !hasEnoughOptions(followOptions)) return setError('Add at least two follow-up options.'); setSaving(true); try { const followUp: FollowUp | null = hasFollowUp ? { question: followQuestion, options: followOptions } : null; const pulse = await api.create({ businessName, idea, question, options, followUp, allowUpdates }, acquisition); navigate(`/published/${pulse.id}?key=${pulse.creatorKey}`) } catch (err) { setError(err instanceof Error ? err.message : 'Could not create Pulse') } finally { setSaving(false) } }
+  async function submit(e: React.FormEvent) { e.preventDefault(); setError(''); if (!hasEnoughOptions(options)) return setError('Add at least two response options.'); if (hasFollowUp && !hasEnoughOptions(followOptions)) return setError('Add at least two follow-up options.'); setSaving(true); try { const followUp: FollowUp | null = hasFollowUp ? { question: followQuestion, options: followOptions } : null; const pulse = await api.create({ businessName, idea, question, options, followUp, allowUpdates }, acquisition); navigate(publishedPath(pulse.id, pulse.creatorKey || '')) } catch (err) { setError(err instanceof Error ? err.message : 'Could not create Pulse') } finally { setSaving(false) } }
   return <main className="form-page"><header className="form-nav"><Logo /><span>New Pulse</span></header><div className="form-layout"><aside><p className="eyebrow">Make the decision smaller</p><h1>What do you need to know?</h1><p>Keep it quick. One clear idea gets a clearer signal.</p><div className="step-mark"><b>01</b><span>Write<br />the question</span></div></aside><form onSubmit={submit} className="create-form">
     <label><span>Business name</span><input value={businessName} onChange={(e) => setBusinessName(e.target.value)} maxLength={120} required /></label>
     <label><span>Idea</span><input value={idea} onChange={(e) => setIdea(e.target.value)} maxLength={160} required /></label>
@@ -107,16 +119,15 @@ function Create() {
 }
 
 function Published() {
-  const { id = '' } = useParams(); const [params] = useSearchParams(); const key = params.get('key') || ''; const [qr, setQr] = useState(''); const [copied, setCopied] = useState(false)
-  const url = `${window.location.origin}/p/${id}`
-  useEffect(() => { void QRCode.toDataURL(url, { width: 640, margin: 2, color: { dark: '#20241f', light: '#f8f5ed' } }).then(setQr) }, [url])
-  async function copy() { await navigator.clipboard.writeText(url); setCopied(true); void api.event('pulse_link_copied', id); setTimeout(() => setCopied(false), 1800) }
-  function download() { const link = document.createElement('a'); link.href = qr; link.download = `living-pulse-${id}.png`; link.click(); void api.event('qr_downloaded', id) }
-  return <main className="success-page"><Logo /><section className="success-card"><div><p className="eyebrow">Published</p><h1>Your Pulse is Live</h1><p>Put this link—or the QR code—where your customers can see it.</p><div className="link-box"><span>{url}</span><button onClick={copy}>{copied ? <Check /> : <Clipboard />}<b>{copied ? 'Copied' : 'Copy Link'}</b></button></div><div className="action-row"><button className="button" onClick={download} disabled={!qr}><Download size={18} />Download QR</button><Link className="button secondary" to={`/p/${id}`} target="_blank">View Pulse<ExternalLink size={17} /></Link><Link className="text-link" to={`/results/${id}?key=${key}`}>View Results<ArrowRight size={16} /></Link></div></div><div className="qr-frame">{qr ? <img src={qr} alt="QR code for public Pulse" /> : <div className="qr-loading"><QrCode /></div>}<span>Scan to answer</span></div></section></main>
+  const { id = '' } = useParams(); const key = creatorKeyFromLocation(window.location.search, window.location.hash); const sharing = usePublicPulseSharing(id); const [resultsCopied, setResultsCopied] = useState(false)
+  const resultsPath = privateResultsPath(id, key)
+  const resultsUrl = `${window.location.origin}${resultsPath}`
+  async function copyResults() { await navigator.clipboard.writeText(resultsUrl); setResultsCopied(true); setTimeout(() => setResultsCopied(false), 1800) }
+  return <main className="success-page"><Logo /><header className="success-heading"><p className="eyebrow">Published</p><h1>Your Pulse is Live</h1></header><section className="publish-section public-share"><div><h2>Share with customers</h2><p>Anyone with this link can respond to your Pulse.</p><div className="link-box public-link"><span>{sharing.url}</span><button onClick={() => void sharing.copy()}>{sharing.copied ? <Check /> : <Clipboard />}<b>{sharing.copied ? 'Copied' : 'Copy Pulse Link'}</b></button></div><div className="action-row"><button className="button" onClick={sharing.download} disabled={!sharing.qr}><Download size={18} />Download QR</button><Link className="button secondary" to={publicPulsePath(id)} target="_blank">View Public Pulse<ExternalLink size={17} /></Link></div></div><div className="qr-frame">{sharing.qr ? <img src={sharing.qr} alt="QR code for public Pulse" /> : <div className="qr-loading"><QrCode /></div>}<span>Scan to answer</span></div></section><section className="publish-section results-access"><div><h2>Your results</h2><p>See responses as they come in.</p><Link className="button" to={resultsPath}>View Results<ArrowRight size={18} /></Link></div><div className="private-return"><h3>Save your private results link</h3><p>You'll need this private link to return to your results later. Keep it somewhere safe.</p><button className="button secondary" onClick={() => void copyResults()}>{resultsCopied ? <Check size={18} /> : <Clipboard size={18} />}{resultsCopied ? 'Copied' : 'Copy Results Link'}</button><small>Anyone with this private link can access your results. Don't share it publicly.</small></div></section></main>
 }
 
 function PublicPulse() {
-  const { id = '' } = useParams(); const [pulse, setPulse] = useState<Pulse | null>(null); const [selected, setSelected] = useState(''); const [follow, setFollow] = useState(''); const [stage, setStage] = useState<'primary' | 'follow' | 'email' | 'done'>('primary'); const [email, setEmail] = useState(''); const [error, setError] = useState('')
+  const { id = '' } = useParams(); const [pulse, setPulse] = useState<PublicPulse | null>(null); const [selected, setSelected] = useState(''); const [follow, setFollow] = useState(''); const [stage, setStage] = useState<'primary' | 'follow' | 'email' | 'done'>('primary'); const [email, setEmail] = useState(''); const [error, setError] = useState('')
   useEffect(() => { api.pulse(id).then((p) => { setPulse(p); void api.event('public_pulse_viewed', id) }).catch((e) => setError(e.message)) }, [id])
   function primary(optionId: string) { setSelected(optionId); void api.event('response_started', id); if (pulse?.followUp) setStage('follow'); else if (pulse?.allowUpdates) setStage('email'); else void finish(optionId) }
   function chooseFollow(optionId: string) { setFollow(optionId); if (pulse?.allowUpdates) setStage('email'); else void finish(selected, optionId) }
@@ -135,14 +146,16 @@ function PublicPulse() {
 }
 
 function ResultsPage() {
-  const { id = '' } = useParams(); const [params] = useSearchParams(); const key = params.get('key') || ''; const [data, setData] = useState<Results | null>(null); const [error, setError] = useState(''); const [showFeedback, setShowFeedback] = useState(false); const [feedbackSent, setFeedbackSent] = useState(false)
+  const { id = '' } = useParams(); const key = creatorKeyFromLocation(window.location.search, window.location.hash); const sharing = usePublicPulseSharing(id); const [data, setData] = useState<Results | null>(null); const [error, setError] = useState(''); const [statusError, setStatusError] = useState(''); const [showFeedback, setShowFeedback] = useState(false); const [feedbackSent, setFeedbackSent] = useState(false); const [copied, setCopied] = useState(false)
   useEffect(() => { api.results(id, key).then((value) => { setData(value); void api.event('results_viewed', id) }).catch((e) => setError(e.message)) }, [id, key])
-  async function changeStatus(status: string) { if (!data) return; await api.status(id, key, status); setData({ ...data, pulse: { ...data.pulse, status } }) }
+  async function changeStatus(status: string) { if (!data) return; const previous = data.pulse.status; setStatusError(''); setData({ ...data, pulse: { ...data.pulse, status } }); try { await api.status(id, key, status) } catch (err) { setData((current) => current ? { ...current, pulse: { ...current.pulse, status: previous } } : current); setStatusError(err instanceof Error ? err.message : 'Could not save status') } }
+  async function copyResultsLink() { await navigator.clipboard.writeText(`${window.location.origin}${privateResultsPath(id, key)}`); setCopied(true); setTimeout(() => setCopied(false), 1800) }
   if (error) return <main className="results-page"><Logo /><p className="error">{error}</p></main>
   if (!data) return <main className="results-page"><Logo /><div className="results-skeleton" /></main>
-  return <main className="results-page"><header><Logo /><ButtonLink to="/create" secondary>New Pulse</ButtonLink></header><section className="results-head"><div><p className="eyebrow">Declared customer interest</p><h1>{data.pulse.idea}</h1><p>{data.pulse.question}</p></div><label className="status-select"><span>Signal status</span><select value={data.pulse.status} onChange={(e) => void changeStatus(e.target.value)}>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select></label></section>
+  return <main className="results-page"><header><Logo /><div className="results-actions"><button className="button secondary" onClick={() => void copyResultsLink()}>{copied ? <Check size={18} /> : <Clipboard size={18} />}{copied ? 'Copied' : 'Copy Results Link'}</button><ButtonLink to="/create" secondary>New Pulse</ButtonLink></div></header><section className="results-head"><div><p className="eyebrow">Private creator view · Declared customer interest</p><h1>{data.pulse.idea}</h1><p>{data.pulse.question}</p></div><div className="status-control"><p>Track what happens to this idea after testing.</p><label className="status-select"><span>Signal status</span><select value={data.pulse.status} onChange={(e) => void changeStatus(e.target.value)}>{statusOptions.map((status) => <option key={status}>{status}</option>)}</select></label><p className="status-description" aria-live="polite">{statusDescriptions[data.pulse.status]}</p>{statusError && <p className="error" role="alert">{statusError}</p>}</div></section>
     <section className="result-summary"><div className="total"><strong>{data.total}</strong><span>{data.total === 1 ? 'response' : 'responses'}</span></div><div className="bars">{data.options.map((option) => <div className="bar-row" key={option.id}><div><b>{option.label}</b><span>{option.count} · {option.percentage}%</span></div><div className="bar-track"><i style={{ transform: `scaleX(${option.percentage / 100})` }} /></div></div>)}</div></section>
-    {data.total === 0 && <div className="empty"><QrCode /><h2>Your signal is waiting.</h2><p>Share the public link or QR code to collect the first response.</p><Link className="button" to={`/published/${id}?key=${key}`}>Sharing tools<ArrowRight size={18} /></Link></div>}
+    <section className="results-share"><div><p className="eyebrow">Public customer link</p><h2>Share this Pulse</h2><p>Want more responses? Share your Pulse with more customers.</p></div><div className="action-row"><button className="button" onClick={() => void sharing.copy()}>{sharing.copied ? <Check size={18} /> : <Clipboard size={18} />}{sharing.copied ? 'Copied' : 'Copy Pulse Link'}</button><button className="button secondary" onClick={sharing.download} disabled={!sharing.qr}><Download size={18} />Download QR</button><Link className="button secondary" to={publicPulsePath(id)} target="_blank">View Public Pulse<ExternalLink size={17} /></Link></div></section>
+    {data.total === 0 && <div className="empty"><QrCode /><h2>Your signal is waiting.</h2><p>Share the public link or QR code to collect the first response.</p><Link className="button" to={publishedPath(id, key)}>Sharing tools<ArrowRight size={18} /></Link></div>}
     {data.followUp.length > 0 && <section className="follow-results"><div><p className="eyebrow">Follow-up</p><h2>{data.pulse.followUp?.question}</h2></div><div>{data.followUp.map((option) => <p key={option.id}><span>{option.label}</span><b>{option.count}</b><em>{option.percentage}%</em></p>)}</div></section>}
     <section className="optins"><span>Requested an update</span><strong>{data.updateOptIns}</strong><small>Email addresses stay private.</small></section>
     {data.total > 0 && <section className="feedback-callout"><div><p className="eyebrow">Help validate Living Pulse</p><h2>Did this change your decision?</h2></div><button className="button secondary" onClick={() => setShowFeedback(true)}>Share feedback<ArrowRight size={18} /></button></section>}
