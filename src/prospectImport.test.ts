@@ -14,7 +14,7 @@ describe('internal prospect import', () => {
   it('reports database and in-file duplicates without mutating during dry-run', async () => {
     const setup = memoryStore(); await setup.services.createProspect(input())
     const before = structuredClone(setup.state())
-    const report = await importProspects([jsonRow(), jsonRow({ publicContactEmail: 'NEW@example.com' }), jsonRow({ publicContactEmail: ' new@example.com ' })], setup.services, true)
+    const report = await importProspects([jsonRow(), jsonRow({ businessName: 'New Bakery', websiteUrl: 'https://new.example', publicContactEmail: 'NEW@example.com' }), jsonRow({ businessName: 'New Bakery', websiteUrl: 'https://new.example', publicContactEmail: ' new@example.com ' })], setup.services, true)
     expect(report.map((row) => row.status)).toEqual(['rejected', 'accepted', 'rejected'])
     expect(setup.state()).toEqual(before)
   })

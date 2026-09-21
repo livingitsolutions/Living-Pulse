@@ -2,12 +2,15 @@ import { INITIAL_DAILY_SEND_LIMIT, MAX_OUTREACH_ATTEMPTS, type SuppressionReason
 import type { GrowthOverview } from '../src/growthTypes.js'
 import { validMutationOrigin } from './operatorAuth.js'
 import type { AcquisitionConsoleRepository } from './acquisitionConsole.js'
+import { candidateToProspectInput, OperatorAssistedDiscoveryProvider, type DiscoveryCandidate } from '../src/prospectDiscovery.js'
+import type { ProspectInput } from '../src/acquisitionFoundation.js'
 
 type MutationServices = {
   qualifyProspect(id: string): Promise<unknown>
   rejectProspect(id: string, reason: string): Promise<unknown>
   suppressProspect(id: string, reason: SuppressionReason): Promise<unknown>
   queueProspect(id: string): Promise<unknown>
+  createProspect(input: ProspectInput): Promise<unknown>
 }
 
 const suppressionReasons = ['manual', 'unsubscribe', 'bounce', 'complaint', 'invalid'] as const
@@ -24,6 +27,19 @@ export function createOperatorConsoleHandler(dependencies: {
     if (request.method === 'POST' && !validMutationOrigin(request)) return json({ error: 'Request origin rejected' }, 403)
 
     try {
+      if (request.method === 'POST' && parts.join('/') === 'prospects/discover') {
+        const body = await request.json() as { criteria?: { category?: string; location?: string; maximumResults?: number }; candidate?: DiscoveryCandidate }
+        if (!body.candidate) return json({ error: 'A manually observed candidate is required.' }, 400)
+        const provider = new OperatorAssistedDiscoveryProvider([body.candidate])
+        const candidates = await provider.discover({ category: body.criteria?.category || '', location: body.criteria?.location || '', maximumResults: body.criteria?.maximumResults })
+        return json({ provider: provider.id, candidates })
+      }
+      if (request.method === 'POST' && parts.join('/') === 'prospects/import') {
+        const body = await request.json() as { candidate?: DiscoveryCandidate }
+        if (!body.candidate) return json({ error: 'A confirmed discovery candidate is required.' }, 400)
+        const prospect = await dependencies.services.createProspect(candidateToProspectInput(body.candidate))
+        return json({ prospect }, 201)
+      }
       if (request.method === 'GET' && parts.join('/') === 'acquisition/overview') {
         const prospects = await dependencies.repository.listProspects()
         const overview: GrowthOverview = {

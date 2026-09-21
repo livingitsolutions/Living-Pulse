@@ -16,6 +16,9 @@ export type Prospect = {
   sourceUrl: string
   sourceType: SourceType
   sourceObservedAt: Date
+  evidenceNote: string
+  potentialUseCase?: string | null
+  emailSourceUrl: string
   qualificationStatus: QualificationStatus
   rejectionReason: string | null
   outreachStatus: OutreachStatus
@@ -47,9 +50,20 @@ export function createProspect(input: ProspectInput): Prospect {
   if (!SOURCE_TYPES.includes(input.sourceType)) throw new Error('A valid source type is required.')
   if (!emailPattern.test(normalizedEmail)) throw new Error('A valid publicly listed business email is required.')
   if (!isPublicSourceUrl(input.sourceUrl) || !input.sourceObservedAt || Number.isNaN(input.sourceObservedAt.getTime())) throw new Error('Public source evidence is required.')
+  if (!input.evidenceNote?.trim()) throw new Error('A concise public-source evidence note is required.')
+  if (!isPublicSourceUrl(input.emailSourceUrl)) throw new Error('Public email source evidence is required.')
   if (input.personalizationContext?.trim() && !input.personalizationEvidence?.trim()) throw new Error('Personalization facts require public evidence.')
   const optional = (value: string | null | undefined) => value?.trim() || null
-  return { ...input, businessName: input.businessName.trim(), websiteUrl: optional(input.websiteUrl), industry: optional(input.industry), locationText: optional(input.locationText), publicContactEmail: input.publicContactEmail.trim(), normalizedEmail, sourceUrl: input.sourceUrl.trim(), personalizationContext: optional(input.personalizationContext), personalizationEvidence: optional(input.personalizationEvidence), qualificationStatus: 'pending', rejectionReason: null, outreachStatus: 'not_contacted' }
+  return { ...input, businessName: input.businessName.trim(), websiteUrl: optional(input.websiteUrl), industry: optional(input.industry), locationText: optional(input.locationText), publicContactEmail: input.publicContactEmail.trim(), normalizedEmail, sourceUrl: input.sourceUrl.trim(), emailSourceUrl: input.emailSourceUrl.trim(), evidenceNote: input.evidenceNote.trim(), potentialUseCase: optional(input.potentialUseCase), personalizationContext: optional(input.personalizationContext), personalizationEvidence: optional(input.personalizationEvidence), qualificationStatus: 'pending', rejectionReason: null, outreachStatus: 'not_contacted' }
+}
+
+export function normalizeWebsite(value: string | null | undefined) {
+  if (!value) return null
+  try { const url = new URL(value); return url.hostname.toLowerCase().replace(/^www\./, '') } catch { return null }
+}
+
+export function normalizeBusinessIdentity(name: string, location?: string | null) {
+  return `${name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}|${(location || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()}`
 }
 
 function isPublicSourceUrl(value: string) {

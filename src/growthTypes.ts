@@ -46,6 +46,9 @@ export type GrowthProspectDetail = GrowthProspectSummary & {
   publicContactEmail: string
   sourceUrl: string
   sourceObservedAt: string
+  evidenceNote: string
+  potentialUseCase: string | null
+  emailSourceUrl: string
   personalizationContext: string | null
   personalizationEvidence: string | null
   rejectionReason: string | null
