@@ -9,7 +9,7 @@ This repository contains two explicit deployment compositions. They share domain
 | Area | Public site | Growth site | Shared source |
 | --- | --- | --- | --- |
 | Frontend entry | `src/main.tsx` → `src/App.tsx` | `growth/main.tsx` → `src/GrowthConsole.tsx` | visual tokens in `src/index.css` |
-| Function entry | `netlify/functions/api.mts` | `netlify/growth-functions/api.mts` | `db/`, acquisition policies/services |
+| Function entry | `netlify/functions/api.mts` (Product Service client only) | `netlify/growth-functions/api.mts` (operator API + Product Service) | product/acquisition policies and contracts |
 | Routes | landing, creation, publishing, public Pulse, Results | operator login/session/logout, console and acquisition operations | none registered across the boundary |
 | Build output | `dist-public` | `dist-growth` | dependencies only |
 
