@@ -3,6 +3,7 @@ import { and, count, eq } from 'drizzle-orm'
 import { db } from '../../db/index.js'
 import { events, feedback, pulses, responses } from '../../db/schema.js'
 import { parseAttribution } from '../../src/acquisition.js'
+import { collectWrittenFeedback, hasWrittenFeedbackQuestion, isWrittenFollowUp, writtenFeedbackValue } from '../../src/validation.js'
 
 const statuses = ['Draft', 'Testing', 'Planned', 'Coming Soon', 'Launched', 'Archived']
 const eventNames = ['landing_viewed', 'create_started', 'pulse_created', 'pulse_published', 'pulse_link_copied', 'qr_downloaded', 'public_pulse_viewed', 'response_started', 'response_completed', 'update_opt_in', 'results_viewed', 'second_pulse_created', 'powered_by_clicked']
@@ -35,9 +36,15 @@ export default async (req: Request) => {
       let followUp = null
       if (body.followUp && typeof body.followUp === 'object') {
         const raw = body.followUp as Record<string, unknown>
-        const followOptions = Array.isArray(raw.options) ? raw.options.map((option) => ({ id: clean((option as Record<string, unknown>).id, 80), label: clean((option as Record<string, unknown>).label, 120) })).filter((o) => o.id && o.label) : []
-        if (!clean(raw.question, 300) || followOptions.length < 2) return bad('A follow-up needs a question and at least two options.')
-        followUp = { question: clean(raw.question, 300), options: followOptions }
+        const followQuestion = clean(raw.question, 300)
+        if (raw.type === 'written_feedback') {
+          if (!hasWrittenFeedbackQuestion(followQuestion)) return bad('Written feedback needs a feedback question.')
+          followUp = { type: 'written_feedback' as const, question: followQuestion }
+        } else {
+          const followOptions = Array.isArray(raw.options) ? raw.options.map((option) => ({ id: clean((option as Record<string, unknown>).id, 80), label: clean((option as Record<string, unknown>).label, 120) })).filter((o) => o.id && o.label) : []
+          if (!followQuestion || followOptions.length < 2) return bad('A follow-up needs a question and at least two options.')
+          followUp = { type: 'multiple_choice' as const, question: followQuestion, options: followOptions }
+        }
       }
       const sessionId = clean(body.sessionId, 100)
       const acquisition = parseAttribution(body.acquisition)
@@ -60,10 +67,14 @@ export default async (req: Request) => {
       const optionId = clean(body.optionId, 80)
       if (!pulse.options.some((option) => option.id === optionId)) return bad('Choose a valid response.')
       const followUpOptionId = clean(body.followUpOptionId, 80) || null
-      if (pulse.followUp && !pulse.followUp.options.some((option) => option.id === followUpOptionId)) return bad('Choose a follow-up response.')
+      if (pulse.followUp && !isWrittenFollowUp(pulse.followUp) && !pulse.followUp.options.some((option) => option.id === followUpOptionId)) return bad('Choose a follow-up response.')
+      if (isWrittenFollowUp(pulse.followUp) && followUpOptionId) return bad('Written feedback does not accept response options.')
+      const writtenFeedback = writtenFeedbackValue(body.followUpText)
+      if (!writtenFeedback.valid) return bad('Written feedback must be 1000 characters or fewer.')
+      if (!isWrittenFollowUp(pulse.followUp) && writtenFeedback.value) return bad('Written feedback is not configured for this Pulse.')
       const email = pulse.allowUpdates ? clean(body.email, 320).toLowerCase() || null : null
       if (email && !/^\S+@\S+\.\S+$/.test(email)) return bad('Enter a valid email address.')
-      await db.insert(responses).values({ pulseId: id, optionId, followUpOptionId, email })
+      await db.insert(responses).values({ pulseId: id, optionId, followUpOptionId, followUpText: writtenFeedback.value, email })
       await db.insert(events).values([{ name: 'response_completed', pulseId: id, sessionId: clean(body.sessionId, 100) }, ...(email ? [{ name: 'update_opt_in', pulseId: id, sessionId: clean(body.sessionId, 100) }] : [])])
       return json({ ok: true }, 201)
     }
@@ -75,7 +86,8 @@ export default async (req: Request) => {
       const aggregate = (options: typeof pulse.options, field: 'optionId' | 'followUpOptionId') => options.map((option) => { const optionCount = rows.filter((row) => row[field] === option.id).length; return { ...option, count: optionCount, percentage: total ? Math.round(optionCount / total * 100) : 0 } })
       const { creatorKey, ...safePulse } = pulse
       void creatorKey
-      return json({ pulse: safePulse, total, options: aggregate(pulse.options, 'optionId'), followUp: pulse.followUp ? aggregate(pulse.followUp.options, 'followUpOptionId') : [], updateOptIns: rows.filter((row) => row.email).length })
+      const followUp = pulse.followUp && !isWrittenFollowUp(pulse.followUp) ? aggregate(pulse.followUp.options, 'followUpOptionId') : []
+      return json({ pulse: safePulse, total, options: aggregate(pulse.options, 'optionId'), followUp, writtenFeedback: collectWrittenFeedback(rows), updateOptIns: rows.filter((row) => row.email).length })
     }
     if (req.method === 'PATCH' && parts[2] === 'status') {
       const body = await req.json() as Record<string, unknown>
