@@ -1,24 +1,9 @@
 [build]
-  command = "npm run build:public"
-  publish = "dist-public"
+  command = "npm run build:growth"
+  publish = "dist-growth"
 
 [functions]
-  directory = "netlify/functions"
-
-[[redirects]]
-  from = "/api/operator/*"
-  to = "/404"
-  status = 404
-
-[[redirects]]
-  from = "/growth"
-  to = "/404"
-  status = 404
-
-[[redirects]]
-  from = "/growth/*"
-  to = "/404"
-  status = 404
+  directory = "netlify/growth-functions"
 
 [[redirects]]
   from = "/*"

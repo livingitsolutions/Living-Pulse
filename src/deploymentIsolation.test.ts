@@ -33,9 +33,10 @@ describe('public deployment composition', () => {
   })
 
   it('packages only the public function directory and requires no operator environment', async () => {
-    const [config, api] = await Promise.all([read('netlify.toml'), read('netlify/functions/api.mts')])
+    const [config, api] = await Promise.all([read('netlify.public.toml'), read('netlify/functions/api.mts')])
     expect(config).toContain('directory = "netlify/functions"')
     expect(config).toContain('command = "npm run build:public"')
+    expect(config).not.toMatch(/migrat|database/i)
     expect(api).not.toMatch(/operator|acquisitionConsole|LIVING_PULSE_OPERATOR_SECRET|ACQUISITION_SENDING_ENABLED|RESEND_API_KEY/i)
   })
 
@@ -53,11 +54,13 @@ describe('public deployment composition', () => {
 
 describe('Growth deployment composition', () => {
   it('uses a dedicated frontend entry and private functions directory', async () => {
-    const [entry, config, netlifyConfig] = await Promise.all([read('growth/main.tsx'), read('vite.growth.config.ts'), read('netlify.growth.toml')])
+    const [entry, config, netlifyConfig] = await Promise.all([read('growth/main.tsx'), read('vite.growth.config.ts'), read('netlify.toml')])
     expect(entry).toMatch(/GrowthConsole/)
     expect(config).toContain("outDir: '../dist-growth'")
     expect(netlifyConfig).toContain('directory = "netlify/growth-functions"')
     expect(netlifyConfig).toContain('command = "npm run build:growth"')
+    expect(netlifyConfig).not.toMatch(/from = "\/api\/(?:operator|product-service)\/\*"[\s\S]*?status = 404/)
+    expect(await read('netlify/growth-functions/api.mts')).toContain("path: ['/api/operator/*', '/api/product-service/*']")
   })
 
   it('retains login and session routes without exposing acquisition unauthenticated', async () => {

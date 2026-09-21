@@ -19,13 +19,13 @@ The public React graph does not import `GrowthConsole`, and the public function 
 
 - Intended host: `pulse.livingitsolutions.com`
 - Repository base directory: repository root
-- Configuration: default `netlify.toml`
+- Configuration: explicit `netlify.public.toml`
 - Build command: `npm run build:public`
 - Publish directory: `dist-public`
 - Functions directory: `netlify/functions`
 - Operator/acquisition environment variables: none
-- Database: existing Living Pulse database binding for product data
-- Migration ownership: yes; this is the single intended migration owner
+- Database: no Netlify Database binding; product data is accessed through the Growth Product Service
+- Migration ownership: no
 
 The public site must not be configured with `LIVING_PULSE_OPERATOR_SECRET`, `ACQUISITION_SENDING_ENABLED`, or acquisition delivery credentials.
 
@@ -33,24 +33,22 @@ The public site must not be configured with `LIVING_PULSE_OPERATOR_SECRET`, `ACQ
 
 - Intended host: `growth.livingitsolutions.com`
 - Repository base directory: repository root
-- Reference configuration: `netlify.growth.toml`
+- Configuration: default `netlify.toml`
 - Build command: `npm run build:growth`
 - Publish directory: `dist-growth`
 - Functions directory: `netlify/growth-functions`
 - Required environment: server-only `LIVING_PULSE_OPERATOR_SECRET`
 - Not required in this sprint: `RESEND_API_KEY`, `ACQUISITION_SENDING_ENABLED`
-- Database: must connect to the same existing Living Pulse database; do not provision a second database
-- Migration ownership: no
+- Database: existing Living Pulse database binding; do not provision a second database
+- Migration ownership: yes; this is the single intended migration owner
 
-Netlify uses `netlify.toml` by default. When creating the future Growth site, configure the Growth build command, publish directory, and functions directory explicitly in that site's settings using `netlify.growth.toml` as the checked-in blueprint. Do not point the Growth site at `netlify/functions`.
+Netlify uses `netlify.toml` by default, so the existing database-owning project deploys Growth without dashboard build overrides. When creating the future Public site, configure it to use `netlify.public.toml`; do not point it at `netlify/growth-functions` or enable Netlify Database.
 
 ## Database connectivity decision
 
-The repository uses `drizzle-orm/netlify-db` with no connection string in source. The database binding is supplied by the Netlify site runtime. Repository inspection therefore cannot prove that a second Netlify site can attach to the first site's managed database, nor can it prove how migration discovery is disabled for only the second site.
+The repository uses `drizzle-orm/netlify-db` with no connection string in source. The database binding is supplied by the existing Growth site's Netlify runtime. The Public function calls the authenticated Product Service and does not import the database repositories.
 
-Before creating the Growth site, confirm with the current Netlify Database capabilities that the same managed database can be attached to both sites using a supported team-level or explicit binding. Do not copy a credential from logs, create another database, or assume the automatic per-site binding is shared. If shared attachment is unavailable, stop and choose a supported single-database architecture before deployment.
-
-Only the public site should execute files under `netlify/database/migrations`. The Growth site must have migration execution disabled or excluded through a Netlify-supported site setting while retaining runtime access to the same database. This is a deployment prerequisite, not an application schema change.
+Only the existing Growth project executes files under `netlify/database/migrations`. The future Public project must not have a Netlify Database binding or database authority, so it does not execute repository migrations. Selecting `netlify.public.toml` changes the Public build composition; keeping database integration disabled on that project enforces migration ownership at the platform boundary.
 
 ## Origin and cookie isolation
 
@@ -64,12 +62,12 @@ Future validation reporting may need to connect a prospect and outreach attempt 
 
 ## Deployment sequence
 
-1. Confirm supported cross-site attachment to the existing database and a supported way to make the public site the only migration owner.
-2. Create the public site from the repository root using the public settings above and attach the existing product database.
-3. Verify public deploy artifacts and functions contain no Growth entry or operator routes.
-4. Create the Growth site from the same repository root using the Growth settings above.
-5. Attach the same database without provisioning another database or enabling migrations.
-6. Configure only the server-side operator secret on the Growth site.
+1. Deploy the existing database-owning project from the repository root with the default `netlify.toml` Growth settings.
+2. Verify Growth deploy artifacts expose the operator API and authenticated Product Service and retain the existing database binding and migrations.
+3. Create the future Public project from the repository root and explicitly select `netlify.public.toml` for its Netlify configuration.
+4. Do not enable Netlify Database or provide database authority to the Public project.
+5. Configure only the dedicated Product Service server credential required by the Public function.
+6. Verify Public deploy artifacts and functions contain no Growth entry or operator routes.
 7. Assign the two custom domains and verify same-origin mutation behavior and host-only cookies.
 
 No deployment, site creation, DNS change, database provisioning, or secret access is performed by this architecture change.
