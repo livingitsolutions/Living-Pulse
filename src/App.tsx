@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowRight, Check, Clipboard, Download, ExternalLink, Plus, QrCode, Trash2 } from 'lucide-react'
+import { ArrowRight, BarChart3, Check, CircleCheck, Clipboard, Download, ExternalLink, Lightbulb, Plus, QrCode, Trash2, Users } from 'lucide-react'
 import QRCode from 'qrcode'
 import { api } from './api'
 import { poweredByPath, preserveAttribution } from './acquisition'
@@ -10,23 +10,58 @@ import { hasEnoughOptions } from './validation'
 const newOption = (label = ''): PulseOption => ({ id: crypto.randomUUID(), label })
 const statusOptions = ['Draft', 'Testing', 'Planned', 'Coming Soon', 'Launched', 'Archived']
 
-function Logo() { return <Link className="logo" to="/" aria-label="Living Pulse home"><span className="pulse-dot" />Living Pulse</Link> }
+function PulseMark({ decorative = true }: { decorative?: boolean }) {
+  return <svg className="pulse-mark" viewBox="0 0 36 36" role={decorative ? undefined : 'img'} aria-hidden={decorative || undefined} aria-label={decorative ? undefined : 'Living Pulse signal mark'}><path d="M2 18h6l4-9 6 18 5-14 4 5h7" /></svg>
+}
+function Logo() { return <Link className="logo" to="/" aria-label="Living Pulse home"><PulseMark /><span>Living Pulse</span></Link> }
 function ButtonLink({ to, children, secondary = false }: { to: string; children: React.ReactNode; secondary?: boolean }) { return <Link className={secondary ? 'button secondary' : 'button'} to={to}>{children}<ArrowRight size={18} /></Link> }
 
 function Landing() {
   useEffect(() => { void api.event('landing_viewed') }, [])
-  const industries = ['Restaurants', 'Retail', 'Gyms', 'Salons', 'Real Estate', 'SaaS', 'Events']
+  useEffect(() => {
+    const elements = document.querySelectorAll<HTMLElement>('.reveal-on-scroll')
+    if (!('IntersectionObserver' in window) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      elements.forEach((element) => element.classList.add('is-visible'))
+      return
+    }
+    document.documentElement.classList.add('motion-enabled')
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return
+        entry.target.classList.add('is-visible')
+        observer.unobserve(entry.target)
+      })
+    }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' })
+    elements.forEach((element) => observer.observe(element))
+    return () => {
+      observer.disconnect()
+      document.documentElement.classList.remove('motion-enabled')
+    }
+  }, [])
+  const steps = [
+    { name: 'Idea', description: "Start with something you're considering.", icon: Lightbulb },
+    { name: 'Ask Customers', description: 'Turn it into one simple question.', icon: Users },
+    { name: 'QR / Link', description: 'Put it wherever your customers already are.', icon: QrCode },
+    { name: 'Responses', description: 'See declared demand and intent.', icon: BarChart3 },
+    { name: 'Better Decision', description: 'Use the signal before you invest.', icon: CircleCheck },
+  ]
+  const industries = [
+    ['Restaurants', 'Menu items · opening hours · delivery'], ['Retail', 'Products · variants · inventory'],
+    ['Gyms', 'Classes · facilities · programs'], ['Salons', 'Services · treatments'],
+    ['Real Estate', 'Unit types · locations · amenities'], ['SaaS', 'Features · integrations · pricing'],
+    ['Events', 'Topics · venues · dates'],
+  ]
   return <>
-    <header className="nav"><Logo /><ButtonLink to="/create" secondary>Create a Pulse</ButtonLink></header>
-    <main>
+    <header className="nav landing-nav"><Logo /><nav aria-label="Main navigation"><a href="#how-it-works">How it works</a><a href="#use-cases">Use cases</a><a href="#faq">FAQ</a></nav><ButtonLink to="/create">Create a Free Pulse</ButtonLink></header>
+    <main className="landing">
       <section className="hero page-grid">
-        <div className="hero-copy"><p className="eyebrow">One question. An actual signal.</p><h1>Stop guessing what your customers want.</h1><p className="lede">Ask one simple question. Share it anywhere. See real demand before you spend time or money.</p><ButtonLink to="/create">Create a Free Pulse</ButtonLink><p className="micro">No login. No sprawling survey. Just a clearer next move.</p></div>
-        <div className="demo-card" aria-label="Example pulse"><span className="card-number">01</span><p className="small-label">Antonio's Café is asking</p><h2>Would you use Sunday delivery?</h2>{['Definitely', 'Probably', 'Maybe', 'No'].map((answer, i) => <div className={i === 0 ? 'demo-answer selected' : 'demo-answer'} key={answer}><span>{answer}</span>{i === 0 && <Check size={18} />}</div>)}<div className="card-stamp">A 10-second Pulse</div></div>
+        <div className="hero-copy"><p className="eyebrow">Know before you build.</p><h1>Stop guessing<br />what your<br />customers<br />want.</h1><p className="lede">Test your next product, service, feature, or idea with real customers in minutes. Share a link or QR code. See declared demand and intent before you invest.</p><ButtonLink to="/create">Create a Free Pulse</ButtonLink><ul className="reassurance" aria-label="What to expect"><li>No login required</li><li>Takes about a minute</li><li>Free to try</li></ul></div>
+        <div className="demo-wrap"><div className="coral-orbit" aria-hidden="true" /><div className="demo-card" aria-label="Illustrative example Pulse"><p className="small-label">Antonio's Café</p><h2>Would you use<br />Sunday delivery?</h2>{[['Definitely', 47], ['Probably', 31], ['Maybe', 17], ['No', 5]].map(([answer, value]) => <div className="demo-answer" key={answer}><i aria-hidden="true" style={{ '--demo-width': `${value}%` } as React.CSSProperties} /><span>{answer}</span><b>{value}%</b></div>)}<p className="demo-note">Illustrative example — not live customer data</p></div><div className="annotation" aria-hidden="true"><span>Turn uncertainty<br />into clarity.</span><svg viewBox="0 0 100 80"><path d="M88 4c-3 33-22 54-63 63" /><path d="m35 55-12 13 18 4" /></svg></div><div className="decision-badge"><Users aria-hidden="true" /><span>Built to help businesses<br />make better decisions.</span></div></div>
       </section>
-      <section className="thinking"><div><p className="eyebrow">You’re thinking</p><blockquote>“Should we offer<br />Sunday delivery?”</blockquote></div><ol className="flow">{['Idea', 'Ask Customers', 'QR / Link', 'Responses', 'Better Decision'].map((item, i) => <li key={item}><span>0{i + 1}</span>{item}</li>)}</ol></section>
-      <section className="uses"><div><p className="eyebrow">Built for everyday decisions</p><h2>Any business with customers has something worth asking.</h2></div><div className="industry-list">{industries.map((item, i) => <span key={item}><b>{String(i + 1).padStart(2, '0')}</b>{item}</span>)}</div></section>
-      <section className="bottom-cta"><p>Ask before you invest.</p><ButtonLink to="/create">Create a Free Pulse</ButtonLink></section>
-    </main><footer><Logo /><span>Declared interest, not guaranteed demand.</span></footer>
+      <section className="thinking reveal-on-scroll" id="how-it-works"><div><p className="eyebrow">How it works</p><blockquote>“Should we offer<br />Sunday delivery?”</blockquote></div><ol className="flow">{steps.map(({ name, description, icon: Icon }, i) => <li key={name}><span>0{i + 1}</span><Icon aria-hidden="true" /><b>{name}</b><p>{description}</p></li>)}</ol></section>
+      <section className="uses reveal-on-scroll" id="use-cases"><div><p className="eyebrow">Built for everyday decisions</p><h2>Every business has a decision worth testing.</h2></div><div className="industry-list">{industries.map(([name, example], i) => <span key={name}><b>{String(i + 1).padStart(2, '0')}</b><strong>{name}</strong><em>{example}</em></span>)}</div></section>
+      <section className="bottom-cta reveal-on-scroll"><div><p>Ask before you invest.</p><ButtonLink to="/create">Create a Free Pulse</ButtonLink></div></section>
+    </main><footer id="faq"><Logo /><span>Declared interest, not guaranteed demand.</span></footer>
   </>
 }
 
