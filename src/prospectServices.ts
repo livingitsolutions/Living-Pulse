@@ -54,7 +54,7 @@ export function createProspectServices(store: ProspectStore) {
         if (domain && await tx.findProspectByWebsite(domain)) throw new Error('A prospect with this website already exists.')
         if (await tx.findProspectByIdentity(normalizeBusinessIdentity(prospect.businessName, prospect.locationText))) throw new Error('A prospect with this business identity already exists; review it manually.')
         const saved = await tx.insertProspect(prospect)
-        await tx.insertAudit('prospect_created', saved.id, undefined, { intake: 'discovery' })
+        await tx.insertAudit('prospect_created', saved.id, undefined, { intake: 'discovery', initiatedBy: 'authenticated_operator' })
         return saved
       })
     },

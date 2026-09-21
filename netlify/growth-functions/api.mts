@@ -7,12 +7,16 @@ import { operatorStore } from '../../db/operatorStore.js'
 import { productOperationRepository } from '../../db/productOperationRepository.js'
 import { createProductOperations } from '../../server/productOperations.js'
 import { createProductServiceHandler } from '../../server/productServiceHandler.js'
+import { UnconfiguredPublicWebDiscoveryProvider } from '../../server/prospectDiscoveryProvider.js'
+import { prospectStore } from '../../db/prospectStore.js'
 
 const operatorAuth = createOperatorAuthHandler({ store: operatorStore, secret: () => Netlify.env.get('LIVING_PULSE_OPERATOR_SECRET') })
 const operatorConsole = createOperatorConsoleHandler({
   authenticated: (request) => hasOperatorSession(request, operatorStore),
   repository: acquisitionConsoleRepository,
   services: { createProspect, qualifyProspect, rejectProspect, suppressProspect, queueProspect },
+  discoveryProvider: new UnconfiguredPublicWebDiscoveryProvider(),
+  prospectExistsByEmail: async (email) => Boolean(await prospectStore.findProspectByEmail(email)),
 })
 
 export default async (request: Request, context: Context) => {

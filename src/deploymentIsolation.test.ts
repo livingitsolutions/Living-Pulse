@@ -151,4 +151,11 @@ describe('Growth deployment composition', () => {
     expect(consoleHandler).toMatch(/validMutationOrigin/)
     expect(consoleHandler).not.toMatch(/Access-Control-Allow-Origin|['"]\*['"]/)
   })
+
+  it('keeps concurrent duplicate imports safe at the database boundary', async () => {
+    const [schema, store] = await Promise.all([read('db/schema.ts'), read('db/prospectStore.ts')])
+    expect(schema).toMatch(/uniqueIndex\('acquisition_prospects_normalized_email_unique'\)\.on\(table\.normalizedEmail\)/)
+    expect(store).toMatch(/db\.transaction/)
+    expect(store).toMatch(/findProspectByEmail/)
+  })
 })

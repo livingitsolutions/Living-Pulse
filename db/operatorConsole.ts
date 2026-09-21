@@ -2,8 +2,9 @@ import { INITIAL_DAILY_SEND_LIMIT, MAX_OUTREACH_ATTEMPTS, type SuppressionReason
 import type { GrowthOverview } from '../src/growthTypes.js'
 import { validMutationOrigin } from './operatorAuth.js'
 import type { AcquisitionConsoleRepository } from './acquisitionConsole.js'
-import { candidateToProspectInput, OperatorAssistedDiscoveryProvider, type DiscoveryCandidate } from '../src/prospectDiscovery.js'
+import { candidateToProspectInput, DiscoveryProviderUnavailableError, runDiscovery, type DiscoveryCandidate, type ProspectDiscoveryProvider } from '../src/prospectDiscovery.js'
 import type { ProspectInput } from '../src/acquisitionFoundation.js'
+import { normalizeEmail } from '../src/acquisitionFoundation.js'
 
 type MutationServices = {
   qualifyProspect(id: string): Promise<unknown>
@@ -20,6 +21,8 @@ export function createOperatorConsoleHandler(dependencies: {
   authenticated(request: Request): Promise<boolean>
   repository: AcquisitionConsoleRepository
   services: MutationServices
+  discoveryProvider: ProspectDiscoveryProvider
+  prospectExistsByEmail(normalizedEmail: string): Promise<boolean>
 }) {
   return async (request: Request) => {
     if (!await dependencies.authenticated(request)) return json({ error: 'Authentication required' }, 401)
@@ -28,11 +31,10 @@ export function createOperatorConsoleHandler(dependencies: {
 
     try {
       if (request.method === 'POST' && parts.join('/') === 'prospects/discover') {
-        const body = await request.json() as { criteria?: { category?: string; location?: string; maximumResults?: number }; candidate?: DiscoveryCandidate }
-        if (!body.candidate) return json({ error: 'A manually observed candidate is required.' }, 400)
-        const provider = new OperatorAssistedDiscoveryProvider([body.candidate])
-        const candidates = await provider.discover({ category: body.criteria?.category || '', location: body.criteria?.location || '', maximumResults: body.criteria?.maximumResults })
-        return json({ provider: provider.id, candidates })
+        const body = await request.json() as { criteria?: unknown }
+        const discovered = await runDiscovery(dependencies.discoveryProvider, body.criteria)
+        const candidates = await Promise.all(discovered.map(async (candidate) => ({ ...candidate, existingProspect: await dependencies.prospectExistsByEmail(normalizeEmail(candidate.publicEmailEvidence.email)) })))
+        return json({ provider: dependencies.discoveryProvider.id, candidates })
       }
       if (request.method === 'POST' && parts.join('/') === 'prospects/import') {
         const body = await request.json() as { candidate?: DiscoveryCandidate }
@@ -79,7 +81,8 @@ export function createOperatorConsoleHandler(dependencies: {
       }
       return json({ error: 'Not found' }, 404)
     } catch (error) {
-      return json({ error: error instanceof Error ? error.message : 'The request could not be completed.' }, 409)
+      const status = error instanceof DiscoveryProviderUnavailableError ? 503 : 409
+      return json({ error: error instanceof Error ? error.message : 'The request could not be completed.' }, status)
     }
   }
 }
