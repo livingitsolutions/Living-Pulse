@@ -148,7 +148,7 @@ describe('operator request protections', () => {
     const state = fixture({ secret: SECRET, token: 'operator-token' })
     expect((await state.handler(request('protected-check', { headers: { 'x-creator-key': 'creator-capability' } }), '192.0.2.1')).status).toBe(401)
     const api = await readFile('netlify/functions/api.mts', 'utf8')
-    expect(api).toMatch(/owned\(id, clean\(req\.headers\.get\('x-creator-key'\)/)
+    expect(api).toMatch(/getCreatorResults\(id, req\.headers\.get\('x-creator-key'\)/)
     expect(api).not.toMatch(/owned\([^)]*operatorAuth/)
   })
 

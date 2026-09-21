@@ -133,3 +133,20 @@ export const operatorLoginAttempts = pgTable('operator_login_attempts', {
 }, (table) => [
   index('operator_login_attempts_client_time_idx').on(table.clientHash, table.attemptedAt),
 ])
+
+export const productOperationIdempotency = pgTable('product_operation_idempotency', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  operationScope: text('operation_scope').notNull(),
+  idempotencyKeyHash: text('idempotency_key_hash').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  status: text('status').default('in_progress').notNull(),
+  resourceType: text('resource_type'),
+  resourceId: text('resource_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex('product_idempotency_scope_key_unique').on(table.operationScope, table.idempotencyKeyHash),
+  index('product_idempotency_created_at_idx').on(table.createdAt),
+  check('product_idempotency_status_check', sql`${table.status} in ('in_progress', 'completed')`),
+])

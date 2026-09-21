@@ -116,7 +116,7 @@ describe('growth console isolation', () => {
 
   it('keeps acquisition behind operator routes and the public API capability check unchanged', async () => {
     const api = await readFile('netlify/functions/api.mts', 'utf8')
-    expect(api).toMatch(/owned\(id, clean\(req\.headers\.get\('x-creator-key'\)/)
+    expect(api).toMatch(/getCreatorResults\(id, req\.headers\.get\('x-creator-key'\)/)
     expect(api).not.toMatch(/operatorConsole|acquisitionConsole|hasOperatorSession/)
     const growthApi = await readFile('netlify/growth-functions/api.mts', 'utf8')
     expect(growthApi).toMatch(/hasOperatorSession/)

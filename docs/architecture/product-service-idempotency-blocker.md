@@ -1,133 +1,44 @@
-# Internal Product Service audit and idempotency blocker
+# Durable product mutation idempotency
 
 Date: 2026-09-21
 
-Status: Blocked pending explicit approval for an additive database migration
+Status: Foundation implemented; Product Service remains intentionally unimplemented
 
-## Why implementation stopped
+## Decision
 
-Moving public mutations across a network boundary introduces ambiguous outcomes: the database-owning service can commit successfully while the Public function times out before receiving the response. Retrying the current operations can duplicate Pulses, responses, feedback, and telemetry. The existing schema has no durable idempotency key or operation ledger.
+Cross-site mutations can commit while their HTTP response is lost. A durable ledger now makes retry identity part of the same database transaction as the business mutation. The Growth/database-owning deployment remains the sole migration owner.
 
-An in-memory cache, browser state, function-instance state, or “do not retry” policy does not safely resolve ambiguous commits. Durable idempotency must be written in the same database transaction as the product mutation. That requires an additive migration. Sprint -1A.9.3 explicitly prohibits creating such a migration without approval, so no Product Service or client was implemented.
+## Mutation classification
 
-## Current product database operation map
+- **Idempotency required:** Pulse creation/publication; response submission (including written feedback and update opt-in); creator feedback; retryable standalone telemetry.
+- **Naturally replay-safe:** setting lifecycle to the same validated status. This remains capability-protected and does not use the ledger.
+- **No retryable mutation:** public Pulse retrieval and creator Results retrieval.
+- Powered-by attribution and standalone observational events retain occurrence semantics: distinct occurrences use distinct keys; only transport retries sharing a key deduplicate. Pulse/response telemetry is atomically coupled to its parent operation.
 
-All operations currently live in `netlify/functions/api.mts` and directly use `db/index.ts` plus Drizzle schema tables.
+## Ledger and scope
 
-### Record telemetry
+`product_operation_idempotency` stores a UUID identifier, operation scope, SHA-256 key hash, SHA-256 request fingerprint, `in_progress`/`completed` status, optional resource type/reference, and timestamps. A unique index on `(operation_scope, idempotency_key_hash)` prevents unrelated operation categories from colliding while serializing retries within one category.
 
-- Browser route: `POST /api/events`.
-- Tables: inserts one `events` row.
-- Validation: event name must be in the fixed allowlist. Powered-by metadata is reduced through `parseAttribution`; other object metadata is accepted as the current record shape.
-- Attribution: stores powered-by source/source Pulse ID. Session ID supports later second-Pulse detection.
-- Capability: none; telemetry is anonymous.
-- Response: `201 { "ok": true }`; unknown name returns 400; unexpected parsing/database failure returns sanitized 500.
-- Transaction: one insert; no explicit transaction.
-- Retry risk: duplicate telemetry rows and inflated product/attribution counts.
+Raw idempotency keys, creator capabilities, emails, feedback text, service/operator credentials, request bodies, and acquisition data are not stored. The repository contract receives only hashes.
 
-### Create and publish a Pulse
+## Fingerprint rules
 
-- Browser route: `POST /api/pulses`.
-- Tables: reads `events` for previous session Pulse creation; inserts `pulses`; inserts `pulse_created`, `pulse_published`, and conditionally `second_pulse_created` events.
-- Validation: trimmed/length-limited business name, idea, question, option IDs/labels, minimum two options, optional multiple-choice or written-feedback follow-up validation, attribution parsing.
-- Capability: database generates `creator_key`; returned only in the created Pulse response for creator use.
-- Response: full created Pulse with creator capability, status 201. Validation errors retain existing messages/status 400.
-- Transaction: currently multiple independent statements with no explicit transaction. The Product Service must expose this as one operation; an approved implementation should make the writes and idempotency record atomic.
-- Retry risk: duplicate Pulses, capabilities, publication events, and second-Pulse attribution.
+Application validation and normalization run before fingerprinting. Object keys are recursively sorted; undefined object properties are omitted; array order is preserved; normalized optional values are explicit. SHA-256 is applied to this canonical representation. Thus the same logical request matches, while reuse of a key for another logical request fails with a generic 409 conflict. Fingerprinting does not change product validation semantics.
 
-### Retrieve a public Pulse
+## Transaction and concurrency semantics
 
-- Browser route: `GET /api/pulses/:id`.
-- Tables: reads `pulses` with a public-field projection.
-- Validation: Pulse ID/path lookup.
-- Capability: none; public operation.
-- Response: public Pulse fields, 200; `Pulse not found`, 404.
-- Transaction/idempotency: read-only; no idempotency required.
+The Drizzle repository starts one transaction, claims with `INSERT ... ON CONFLICT DO NOTHING`, performs all coupled business writes, and marks the ledger complete before commit. Validation/database failures roll back both claim and writes, leaving retry possible. A competing transaction either observes the completed winner and replays or receives a deterministic in-progress response; it cannot execute a second mutation. No claim is committed separately from business state.
 
-### Submit response, written feedback, and update opt-in
+## Replay semantics
 
-- Browser route: `POST /api/pulses/:id/responses`.
-- Tables: reads `pulses`; inserts `responses`; inserts `response_completed` and optionally `update_opt_in` events.
-- Validation: Pulse existence; primary option membership; multiple-choice follow-up membership; written follow-up rejects option IDs; written feedback is trimmed and limited to 1000 characters; feedback is rejected when not configured; optional email is stored only when updates are enabled and must match the current email pattern.
-- Capability: none; anonymous respondent operation transported by the authenticated Public server.
-- Response: `201 { "ok": true }`; current validation errors and Pulse 404 remain part of the public contract.
-- Transaction: currently multiple independent statements with no explicit transaction. The Product Service must expose one response-submission operation and atomically persist the response, derived events, and idempotency claim.
-- Retry risk: duplicate response, duplicate written feedback, duplicate update opt-in count, and duplicate telemetry.
+Pulse creation stores only `resource_type=pulse` and the Pulse ID, then re-reads the canonical row on replay. The existing Pulse row persists its generated creator capability, so replay returns exactly the same capability without placing it in the ledger or generating another one. Response, creator-feedback, and telemetry operations replay their fixed success result after confirming the completed resource reference.
 
-### Retrieve creator Results
+Creator capability validation remains independent of idempotency. Feedback replay checks the capability again. Idempotency keys do not authorize Results, lifecycle, operator, or future Product Service access.
 
-- Browser route: `GET /api/pulses/:id/results` with `X-Creator-Key`.
-- Tables: reads `pulses` by both ID and `creator_key`; reads `responses`.
-- Validation/authorization: matching creator capability is mandatory. The server-to-server credential must never replace it.
-- Response: safe Pulse without `creatorKey`, total, option/follow-up aggregates, collected written feedback, and update-opt-in count; denial is 403.
-- Transaction/idempotency: read-only; no idempotency required.
+## Existing-client compatibility
 
-### Update lifecycle/status
+The current browser contract is unchanged. A non-empty `Idempotency-Key` header is honored; when absent, the Public function generates a fresh server-side UUID for that single request. This preserves existing clients without falsely deduplicating separate browser actions. The future Public server will generate and retain stable keys across Product Service retries.
 
-- Browser route: `PATCH /api/pulses/:id/status`.
-- Tables: reads `pulses` by ID/capability; updates `pulses.status`.
-- Validation/authorization: status must be one of Draft, Testing, Planned, Coming Soon, Launched, Archived; matching creator capability is mandatory.
-- Response: `{ "status": value }`; current invalid-status/access failure is 403.
-- Transaction: one update after authorization read; no explicit transaction.
-- Retry risk: replaying the same desired status is naturally idempotent. A future request key/fingerprint can still prevent accidental key reuse with a different payload, but this operation does not independently force the migration.
+## Future Product Service use
 
-### Submit creator feedback
-
-- Browser route: `POST /api/pulses/:id/feedback`.
-- Tables: reads `pulses` by ID/capability; inserts `feedback`.
-- Validation/authorization: matching creator capability; all five fields required after trimming and capped at 1000 characters.
-- Response: `201 { "ok": true }`; access denial 403; incomplete feedback 400.
-- Transaction: one insert after authorization read; no explicit transaction.
-- Retry risk: duplicate feedback rows after an ambiguous response.
-
-## Minimum durable idempotency requirement
-
-An approved follow-up migration should add a small product-operation idempotency ledger rather than adding unrelated infrastructure. The final schema design requires review, but it minimally needs:
-
-- an operation scope;
-- a caller-supplied opaque idempotency key;
-- a hash/fingerprint of the normalized request to reject key reuse with different input;
-- the created resource identifier where applicable;
-- creation/retention timestamps;
-- a uniqueness constraint on operation scope plus key.
-
-It must not persist the Product Service secret, creator capability, respondent email, written feedback, or raw sensitive request bodies. Pulse creation can reconstruct its response from the stored resource ID. Other operations can return their fixed response after confirming the matching fingerprint.
-
-The idempotency claim and business writes must occur in one database transaction. Concurrent requests for the same key must converge on one committed outcome. Pulse creation/publication, response submission, creator feedback, and telemetry recording require this boundary before cross-site deployment.
-
-The existing Growth/database-owning project remains the sole migration owner.
-
-## Intended Product Service design after approval
-
-- Growth-only function namespace distinct from `/api/operator/*`.
-- Explicit operations only: record telemetry, create Pulse, get public Pulse, submit response, get creator Results, update lifecycle, submit creator feedback.
-- Authentication with server-only `LIVING_PULSE_PRODUCT_SERVICE_SECRET`, constant-time verification, generic denial, and no credential logging/persistence.
-- Public server client configured by server-only `LIVING_PULSE_PRODUCT_SERVICE_URL` and the same service secret.
-- Finite request timeout and sanitized browser-compatible errors.
-- No wildcard CORS; authentication is mandatory regardless of origin.
-- Creator-protected operations require both valid service authentication and the existing creator capability.
-- Anonymous Pulse reads and response submissions remain anonymous at the product-authorization layer after authenticated server transport.
-- No acquisition, operator, delivery, environment, arbitrary SQL, or generic table operations.
-- Minimal sanitized logs containing operation name, generic outcome category, and optional platform request ID only.
-
-## Environment ownership after approval
-
-Growth/database owner may hold:
-
-- `LIVING_PULSE_PRODUCT_SERVICE_SECRET`
-- `LIVING_PULSE_OPERATOR_SECRET`
-- future `RESEND_API_KEY`
-- future `ACQUISITION_SENDING_ENABLED`
-
-Public may hold only:
-
-- `LIVING_PULSE_PRODUCT_SERVICE_URL`
-- `LIVING_PULSE_PRODUCT_SERVICE_SECRET`
-
-No value may be placed in a `VITE_*` variable or exposed to browser code.
-
-## Required next decision
-
-Approve an additive migration for a product-operation idempotency ledger and the associated transaction refactor. After approval, implement and test the Product Service, typed timeout-bound client, unchanged browser API facade, service/operator isolation, creator dual authorization, and public no-database composition.
-
-DATABASE MIGRATION REQUIRED
+The Product Service should call these application operations and forward stable caller-generated keys. It must still implement its separate server credential, finite timeout, creator dual authorization, and acquisition/operator isolation. This foundation does not implement that service, remove current Public database access, or alter deployment composition.
