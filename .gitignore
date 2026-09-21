@@ -1,0 +1,8 @@
+node_modules
+dist
+.netlify/*
+!.netlify/results.md
+.env*
+!.env.example
+*.log
+*.tsbuildinfo
