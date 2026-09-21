@@ -2,9 +2,10 @@ import type { Config } from '@netlify/functions'
 import { and, count, eq } from 'drizzle-orm'
 import { db } from '../../db/index.js'
 import { events, feedback, pulses, responses } from '../../db/schema.js'
+import { parseAttribution } from '../../src/acquisition.js'
 
 const statuses = ['Draft', 'Testing', 'Planned', 'Coming Soon', 'Launched', 'Archived']
-const eventNames = ['landing_viewed', 'create_started', 'pulse_created', 'pulse_published', 'pulse_link_copied', 'qr_downloaded', 'public_pulse_viewed', 'response_started', 'response_completed', 'update_opt_in', 'results_viewed', 'second_pulse_created']
+const eventNames = ['landing_viewed', 'create_started', 'pulse_created', 'pulse_published', 'pulse_link_copied', 'qr_downloaded', 'public_pulse_viewed', 'response_started', 'response_completed', 'update_opt_in', 'results_viewed', 'second_pulse_created', 'powered_by_clicked']
 const json = (body: unknown, status = 200) => Response.json(body, { status })
 const bad = (message: string, status = 400) => json({ error: message }, status)
 const clean = (value: unknown, max = 500) => typeof value === 'string' ? value.trim().slice(0, max) : ''
@@ -22,7 +23,8 @@ export default async (req: Request) => {
     if (req.method === 'POST' && parts[0] === 'events') {
       const body = await req.json() as Record<string, unknown>
       if (!eventNames.includes(String(body.name))) return bad('Unknown event')
-      await db.insert(events).values({ name: String(body.name), pulseId: clean(body.pulseId) || null, sessionId: clean(body.sessionId, 100) || null, metadata: typeof body.metadata === 'object' ? body.metadata as Record<string, string | number | boolean> : null })
+      const metadata = body.name === 'powered_by_clicked' ? parseAttribution({ source: (body.metadata as Record<string, unknown> | null)?.source, sourcePulseId: body.pulseId }) : typeof body.metadata === 'object' ? body.metadata as Record<string, string | number | boolean> : null
+      await db.insert(events).values({ name: String(body.name), pulseId: clean(body.pulseId) || null, sessionId: clean(body.sessionId, 100) || null, metadata })
       return json({ ok: true }, 201)
     }
 
@@ -38,9 +40,10 @@ export default async (req: Request) => {
         followUp = { question: clean(raw.question, 300), options: followOptions }
       }
       const sessionId = clean(body.sessionId, 100)
+      const acquisition = parseAttribution(body.acquisition)
       const prior = sessionId ? await db.select({ value: count() }).from(events).where(and(eq(events.sessionId, sessionId), eq(events.name, 'pulse_created'))) : [{ value: 0 }]
       const [pulse] = await db.insert(pulses).values({ businessName: clean(body.businessName, 120), idea: clean(body.idea, 160), question: clean(body.question, 300), options, followUp, allowUpdates: body.allowUpdates === true, status: 'Testing' }).returning()
-      await db.insert(events).values([{ name: 'pulse_created', pulseId: pulse.id, sessionId }, { name: 'pulse_published', pulseId: pulse.id, sessionId }, ...(prior[0].value > 0 ? [{ name: 'second_pulse_created', pulseId: pulse.id, sessionId }] : [])])
+      await db.insert(events).values([{ name: 'pulse_created', pulseId: pulse.id, sessionId, metadata: acquisition }, { name: 'pulse_published', pulseId: pulse.id, sessionId, metadata: acquisition }, ...(prior[0].value > 0 ? [{ name: 'second_pulse_created', pulseId: pulse.id, sessionId, metadata: acquisition }] : [])])
       return json(pulse, 201)
     }
 
