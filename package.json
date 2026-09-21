@@ -10,7 +10,8 @@
     "build:growth": "tsc -b && vite build --config vite.growth.config.ts",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "node scripts/verify-public-site.mjs && vitest run",
+    "sync:public-site": "node scripts/verify-public-site.mjs --write",
     "prospects:import": "vite-node scripts/import-prospects.ts"
   },
   "dependencies": {

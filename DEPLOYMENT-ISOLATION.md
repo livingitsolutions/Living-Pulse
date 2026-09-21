@@ -2,7 +2,7 @@
 
 > Database decision update: [docs/architecture/deployment-database-decision.md](./docs/architecture/deployment-database-decision.md) selects a Growth-owned database with a future authenticated server-to-server product boundary. Direct cross-site Netlify Database binding remains not verified.
 
-This repository contains two explicit deployment compositions. Each Netlify project selects its composition with the supported Package directory setting. They share domain and database code, but they do not share frontend or function entrypoints.
+This repository contains two explicit deployment compositions. Growth uses the repository root. Public uses a self-contained build base whose checked-in presentation/client source is synchronized from the root source with `npm run sync:public-site` and verified by `npm test`.
 
 Netlify searches for `netlify.toml` in Package directory, Base directory, then repository root order. The repository intentionally has no root `netlify.toml`, because root configuration would apply to both projects and override conflicting dashboard build fields.
 
@@ -10,21 +10,21 @@ Netlify searches for `netlify.toml` in Package directory, Base directory, then r
 
 | Area | Public site | Growth site | Shared source |
 | --- | --- | --- | --- |
-| Frontend entry | `src/main.tsx` → `src/App.tsx` | `growth/main.tsx` → `src/GrowthConsole.tsx` | visual tokens in `src/index.css` |
-| Function entry | `netlify/functions/api.mts` (Product Service client only) | `netlify/growth-functions/api.mts` (operator API + Product Service) | product/acquisition policies and contracts |
+| Frontend entry | `deploy/public-site/src/main.tsx` → `App.tsx` | `growth/main.tsx` → `src/GrowthConsole.tsx` | Public copy is mechanically synchronized |
+| Function entry | `deploy/public-site/netlify/functions/api.mts` (Product Service client only) | `netlify/growth-functions/api.mts` (operator API + Product Service) | product policies and contracts |
 | Routes | landing, creation, publishing, public Pulse, Results | operator login/session/logout, console and acquisition operations | none registered across the boundary |
-| Build output | `dist-public` | `dist-growth` | dependencies only |
+| Build output | `deploy/public-site/dist` | `dist-growth` | none |
 
 The public React graph does not import `GrowthConsole`, and the public function does not import operator authentication, operator stores, acquisition console repositories, or acquisition mutation services. Public redirects explicitly reject `/growth`, `/growth/*`, and `/api/operator/*` before the SPA fallback.
 
 ## Public Netlify site
 
 - Intended host: `pulse.livingitsolutions.com`
-- Repository base directory: repository root
-- Package directory: `deploy/public`
-- Configuration: `deploy/public/netlify.toml`
-- Build command: `npm run build:public`
-- Publish directory: `dist-public`
+- Repository base directory: `deploy/public-site`
+- Package directory: unset
+- Configuration: `deploy/public-site/netlify.toml`
+- Build command: `npm run build`
+- Publish directory: `dist`
 - Functions directory: `netlify/functions`
 - Operator/acquisition environment variables: none
 - Database: no Netlify Database binding; product data is accessed through the Growth Product Service
@@ -46,13 +46,15 @@ The public site must not be configured with `LIVING_PULSE_OPERATOR_SECRET`, `ACQ
 - Database: existing Living Pulse database binding; do not provision a second database
 - Migration ownership: yes; this is the single intended migration owner
 
-Set each project's Package directory once in the Netlify UI. Netlify then selects the package-local configuration before considering Base or repository root. Do not copy build, publish, or functions values into dashboard fields; the selected repository configuration owns them.
+Growth keeps its existing Package directory. Public must use `deploy/public-site` as its Base directory and clear its old `deploy/public` Package directory so configuration and dependency installation occur entirely within the isolated subtree. Do not copy build, publish, or functions values into dashboard fields; the selected repository configuration owns them.
 
 ## Database connectivity decision
 
 The repository uses `drizzle-orm/netlify-db` with no connection string in source. The database binding is supplied by the existing Growth site's Netlify runtime. The Public function calls the authenticated Product Service and does not import the database repositories.
 
-Netlify's default migration discovery is scoped to `base + package directory`. The Public package has no `netlify/database/migrations` directory and its configuration contains no explicit database migration path, so the root migrations are not discovered by Public. The Growth configuration explicitly sets `database.migrations.path = "netlify/database/migrations"`, retaining the existing migration owner and location. Public must also receive no database binding or database authority.
+The old Public package-directory setting selected its site configuration, but did not isolate Netlify Database discovery while the build base remained the repository root. A production Public deployment discovered the root `netlify/database/migrations` directory and provisioned a database. The shared root `@netlify/database` dependency was an independent provisioning trigger as well. Consequently, the old `deploy/public` layout is **not** a safe Public deployment boundary. The replacement `deploy/public-site` base excludes both triggers.
+
+Netlify's documented structural boundary is the build base/dependency-management directory, not the package-directory setting alone. A supported repair requires a self-contained Public base (or a separate Public repository) whose dependency graph excludes `@netlify/database` and whose filesystem excludes `netlify/database/migrations`. Growth must remain rooted where the five already-applied migrations exist, because those migration paths and contents are immutable. No documented per-site switch disables Netlify Database provisioning or excludes conventional migrations.
 
 ## Origin and cookie isolation
 
@@ -66,9 +68,9 @@ Future validation reporting may need to connect a prospect and outreach attempt 
 
 ## Deployment sequence
 
-1. Keep the repository Base directory at the repository root for both projects.
-2. Set the existing Growth project's Package directory to `deploy/growth`, then verify its resolved configuration before triggering a deploy.
-3. Set the Public project's Package directory to `deploy/public`, then verify its resolved configuration before triggering a deploy.
+1. Keep the existing Growth project's Base directory unset/root and Package directory set to `deploy/growth`.
+2. Set the Public project's Base directory to `deploy/public-site` and clear its old Package directory value (`deploy/public`).
+3. Verify Public resolves `deploy/public-site/netlify.toml`, installs only its local lockfile, and publishes `dist` before triggering any deploy.
 4. Verify Growth exposes the operator API and authenticated Product Service and retains the existing database binding and migrations.
 5. Do not enable Netlify Database or provide database authority to the Public project.
 6. Configure only the dedicated Product Service server credential required by the Public function.
