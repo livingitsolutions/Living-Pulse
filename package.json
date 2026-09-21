@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "workspaces": [
+    "deploy/growth"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "npm run build:public",
