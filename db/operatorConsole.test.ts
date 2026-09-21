@@ -40,7 +40,8 @@ function setup(authenticated = true) {
   }
   const discoveryCandidate: DiscoveryCandidate = { businessName: 'Public Coffee', industry: 'Hospitality', locationText: 'Bristol', websiteUrl: 'https://publiccoffee.example', sourceType: 'business_website', sourceUrl: 'https://publiccoffee.example/contact', sourceObservedAt: '2026-09-21T10:00:00Z', evidenceNote: 'The contact page identifies the business.', potentialUseCase: 'Could test customer interest in a menu idea.', personalizationContext: null, personalizationEvidence: null, publicEmailEvidence: { email: 'hello@publiccoffee.example', sourceUrl: 'https://publiccoffee.example/contact', observedText: 'Email hello@publiccoffee.example' } }
   const discoveryProvider: ProspectDiscoveryProvider = { id: 'test_public_search', discover: vi.fn(async () => [discoveryCandidate]) }
-  return { handler: createOperatorConsoleHandler({ authenticated: async () => authenticated, repository, services, discoveryProvider, prospectExistsByEmail: async () => false }), repository, services, discoveryProvider }
+  const prospectExistsByEmail = vi.fn(async () => false)
+  return { handler: createOperatorConsoleHandler({ authenticated: async () => authenticated, repository, services, discoveryProvider, prospectExistsByEmail }), repository, services, discoveryProvider, prospectExistsByEmail }
 }
 
 const request = (path: string, init: RequestInit = {}) => new Request(`${ORIGIN}/api/operator/${path}`, init)
@@ -95,6 +96,36 @@ describe('operator console mutations', () => {
     expect(state.services.createProspect).toHaveBeenCalledOnce()
     expect(state.services.qualifyProspect).not.toHaveBeenCalled()
     expect(state.services.queueProspect).not.toHaveBeenCalled()
+    expect(state.prospectExistsByEmail).toHaveBeenCalledWith('hello@publiccoffee.example')
+  })
+
+  it('completes provider discovery before duplicate lookup and returns duplicate state', async () => {
+    const state = setup()
+    const order: string[] = []
+    const discover = state.discoveryProvider.discover.bind(state.discoveryProvider)
+    state.discoveryProvider.discover = vi.fn(async (criteria, signal) => {
+      order.push('provider')
+      return discover(criteria, signal)
+    })
+    state.prospectExistsByEmail.mockImplementation(async () => { order.push('duplicate'); return true })
+    const response = await state.handler(mutation('prospects/discover', { criteria: { category: 'Cafe', location: 'Bristol', maxResults: 1 } }))
+    expect(response.status).toBe(200)
+    expect(order).toEqual(['provider', 'duplicate'])
+    expect(await response.json()).toMatchObject({ candidates: [{ existingProspect: true }] })
+  })
+
+  it('never exposes database query details when duplicate lookup fails', async () => {
+    const state = setup()
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    state.prospectExistsByEmail.mockRejectedValue(new Error('select "evidence_note" from "acquisition_prospects" where $1; connection refused'))
+    const response = await state.handler(mutation('prospects/discover', { criteria: { category: 'Cafe', location: 'Bristol', maxResults: 1 } }))
+    const serialized = JSON.stringify(await response.json())
+    expect(response.status).toBe(409)
+    expect(serialized).toBe('{"error":"Discovery could not be completed."}')
+    expect(serialized).not.toMatch(/select|acquisition_prospects|evidence_note|connection|\$1/i)
+    expect(log).toHaveBeenCalledWith('Growth operator request failed', { classification: 'discovery_internal' })
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/select|acquisition_prospects|evidence_note|connection|\$1/i)
+    log.mockRestore()
   })
 
   it('rejects invalid criteria before invoking discovery', async () => {
@@ -105,11 +136,13 @@ describe('operator console mutations', () => {
 
   it('returns a safe service-unavailable response when live discovery is not configured', async () => {
     const state = setup()
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     state.discoveryProvider.discover = vi.fn(async () => { throw new (await import('../src/prospectDiscovery')).DiscoveryProviderUnavailableError() })
     const response = await state.handler(mutation('prospects/discover', { criteria: { category: 'Cafe', location: 'Bristol', maxResults: 1 } }))
     expect(response.status).toBe(503)
-    expect(await response.json()).toMatchObject({ error: expect.stringMatching(/not configured/i) })
+    expect(await response.json()).toEqual({ error: 'Discovery could not be completed.' })
     expect(state.services.createProspect).not.toHaveBeenCalled()
+    log.mockRestore()
   })
   it('delegates qualification and required-reason rejection to application services', async () => {
     const state = setup()
