@@ -30,9 +30,10 @@ describe('prospect discovery boundary', () => {
     expect(() => validateDiscoveryCandidate(candidate({ sourceObservedAt: 'not-a-date' }))).toThrow(/timestamp/i)
   })
 
-  it('requires the exact published email and never accepts a guessed or case-altered address', () => {
+  it('requires the exact published mailbox while accepting casing-only differences', () => {
     expect(() => validateDiscoveryCandidate(candidate({ publicEmailEvidence: { email: 'info@harbour.example', sourceUrl: 'https://harbour.example/contact', observedText: 'Call our team' } }))).toThrow(/guessed emails/i)
-    expect(() => validateDiscoveryCandidate(candidate({ publicEmailEvidence: { email: 'Bookings@harbour.example', sourceUrl: 'https://harbour.example/contact', observedText: 'bookings@harbour.example' } }))).toThrow(/exact observed/i)
+    expect(validateDiscoveryCandidate(candidate({ publicEmailEvidence: { email: 'bookings@harbour.example', sourceUrl: 'https://harbour.example/contact', observedText: 'Contact Bookings@Harbour.Example today' } })).publicEmailEvidence.observedText).toBe('Contact Bookings@Harbour.Example today')
+    expect(() => validateDiscoveryCandidate(candidate({ publicEmailEvidence: { email: 'info@harbour.example', sourceUrl: 'https://harbour.example/contact', observedText: 'contact@harbour.example' } }))).toThrow(/guessed emails/i)
     expect(() => validateDiscoveryCandidate(candidate({ publicEmailEvidence: { email: 'bookings@harbour.example', sourceUrl: '', observedText: 'bookings@harbour.example' } }))).toThrow(/supporting/i)
   })
 
