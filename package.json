@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prospects:import": "vite-node scripts/import-prospects.ts"
   },
   "dependencies": {
     "@netlify/database": "latest",
