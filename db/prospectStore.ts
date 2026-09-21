@@ -1,4 +1,4 @@
-import { and, count, eq } from 'drizzle-orm'
+import { and, count, eq, sql } from 'drizzle-orm'
 import { db } from './index.js'
 import { acquisitionAuditEvents, acquisitionOutreachAttempts, acquisitionProspects, acquisitionSuppressions } from './schema.js'
 import type { Prospect, SuppressionReason } from '../src/acquisitionFoundation.js'
@@ -17,6 +17,9 @@ const stored = (row: typeof acquisitionProspects.$inferSelect): StoredProspect =
   sourceUrl: row.sourceUrl,
   sourceType: row.sourceType as StoredProspect['sourceType'],
   sourceObservedAt: row.sourceObservedAt,
+  evidenceNote: row.evidenceNote,
+  potentialUseCase: row.potentialUseCase,
+  emailSourceUrl: row.emailSourceUrl,
   qualificationStatus: row.qualificationStatus as StoredProspect['qualificationStatus'],
   rejectionReason: row.rejectionReason,
   outreachStatus: row.outreachStatus as StoredProspect['outreachStatus'],
@@ -32,6 +35,16 @@ function transactionAdapter(tx: Transaction): ProspectTransaction {
     },
     async findProspectByEmail(normalizedEmail) {
       const [row] = await tx.select().from(acquisitionProspects).where(eq(acquisitionProspects.normalizedEmail, normalizedEmail)).limit(1)
+      return row ? stored(row) : null
+    },
+    async findProspectByWebsite(domain) {
+      const [row] = await tx.select().from(acquisitionProspects).where(sql`lower(regexp_replace(split_part(${acquisitionProspects.websiteUrl}, '://', 2), '^www\\.', '')) LIKE ${domain + '%'}`).limit(1)
+      return row ? stored(row) : null
+    },
+    async findProspectByIdentity(identity) {
+      const [name, location] = identity.split('|')
+      const rows = await tx.select().from(acquisitionProspects).where(sql`lower(regexp_replace(${acquisitionProspects.businessName}, '[^a-zA-Z0-9]+', ' ', 'g')) = ${name}`)
+      const row = rows.find((item) => (item.locationText || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === location)
       return row ? stored(row) : null
     },
     async insertProspect(prospect: Prospect) {
@@ -74,5 +87,19 @@ export const prospectStore: ProspectStore = {
   async findProspectByEmail(normalizedEmail) {
     const [row] = await db.select().from(acquisitionProspects).where(and(eq(acquisitionProspects.normalizedEmail, normalizedEmail))).limit(1)
     return row ? stored(row) : null
+  },
+  async findProspectByWebsite(domain) {
+    const [row] = await db.select().from(acquisitionProspects).where(sql`lower(regexp_replace(split_part(${acquisitionProspects.websiteUrl}, '://', 2), '^www\\.', '')) LIKE ${domain + '%'}`).limit(1)
+    return row ? stored(row) : null
+  },
+  async findProspectByIdentity(identity) {
+    const [name, location] = identity.split('|')
+    const rows = await db.select().from(acquisitionProspects).where(sql`lower(regexp_replace(${acquisitionProspects.businessName}, '[^a-zA-Z0-9]+', ' ', 'g')) = ${name}`)
+    const row = rows.find((item) => (item.locationText || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === location)
+    return row ? stored(row) : null
+  },
+  async isSuppressed(normalizedEmail) {
+    const [row] = await db.select().from(acquisitionSuppressions).where(eq(acquisitionSuppressions.normalizedEmail, normalizedEmail)).limit(1)
+    return Boolean(row)
   },
 }

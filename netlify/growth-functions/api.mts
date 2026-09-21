@@ -1,6 +1,6 @@
 import type { Config, Context } from '@netlify/functions'
 import { acquisitionConsoleRepository } from '../../db/acquisitionConsole.js'
-import { qualifyProspect, queueProspect, rejectProspect, suppressProspect } from '../../db/acquisitionApplication.js'
+import { createProspect, qualifyProspect, queueProspect, rejectProspect, suppressProspect } from '../../db/acquisitionApplication.js'
 import { createOperatorAuthHandler, hasOperatorSession } from '../../db/operatorAuth.js'
 import { createOperatorConsoleHandler } from '../../db/operatorConsole.js'
 import { operatorStore } from '../../db/operatorStore.js'
@@ -12,7 +12,7 @@ const operatorAuth = createOperatorAuthHandler({ store: operatorStore, secret: (
 const operatorConsole = createOperatorConsoleHandler({
   authenticated: (request) => hasOperatorSession(request, operatorStore),
   repository: acquisitionConsoleRepository,
-  services: { qualifyProspect, rejectProspect, suppressProspect, queueProspect },
+  services: { createProspect, qualifyProspect, rejectProspect, suppressProspect, queueProspect },
 })
 
 export default async (request: Request, context: Context) => {

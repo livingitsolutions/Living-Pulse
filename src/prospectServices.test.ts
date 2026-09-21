@@ -3,7 +3,7 @@ import { createProspectServices, type AuditName, type ProspectStore, type Prospe
 import type { Prospect, ProspectInput, SuppressionReason } from './acquisitionFoundation'
 
 const input = (overrides: Partial<ProspectInput> = {}): ProspectInput => ({
-  businessName: 'Public Coffee', publicContactEmail: ' Hello@PublicCoffee.example ', sourceUrl: 'https://publiccoffee.example/contact', sourceType: 'business_website', sourceObservedAt: new Date('2026-09-21T10:00:00Z'), personalizationContext: null, personalizationEvidence: null, ...overrides,
+  businessName: 'Public Coffee', publicContactEmail: ' Hello@PublicCoffee.example ', sourceUrl: 'https://publiccoffee.example/contact', sourceType: 'business_website', sourceObservedAt: new Date('2026-09-21T10:00:00Z'), evidenceNote: 'Contact page lists this business email.', potentialUseCase: null, emailSourceUrl: 'https://publiccoffee.example/contact', personalizationContext: null, personalizationEvidence: null, ...overrides,
 })
 
 type State = { prospects: StoredProspect[]; suppressions: Map<string, SuppressionReason>; attempts: { id: string; prospectId: string; sequenceNumber: number }[]; audits: { name: AuditName; prospectId: string; attemptId?: string }[] }
@@ -14,6 +14,8 @@ function memoryStore(failAudit?: AuditName) {
   const adapter = (working: State): ProspectTransaction => ({
     findProspect: async (id) => working.prospects.find((value) => value.id === id) ?? null,
     findProspectByEmail: async (email) => working.prospects.find((value) => value.normalizedEmail === email) ?? null,
+    findProspectByWebsite: async (domain) => working.prospects.find((value) => value.websiteUrl?.includes(domain)) ?? null,
+    findProspectByIdentity: async (identity) => working.prospects.find((value) => `${value.businessName.toLowerCase()}|${(value.locationText || '').toLowerCase()}` === identity) ?? null,
     insertProspect: async (prospect: Prospect) => { const saved = { ...prospect, id: `prospect-${++serial}` }; working.prospects.push(saved); return saved },
     updateProspect: async (id, changes) => { const index = working.prospects.findIndex((value) => value.id === id); working.prospects[index] = { ...working.prospects[index], ...changes }; return working.prospects[index] },
     isSuppressed: async (email) => working.suppressions.has(email),
@@ -30,8 +32,11 @@ function memoryStore(failAudit?: AuditName) {
       return result
     },
     findProspectByEmail: async (email) => state.prospects.find((value) => value.normalizedEmail === email) ?? null,
+    findProspectByWebsite: async (domain) => state.prospects.find((value) => value.websiteUrl?.includes(domain)) ?? null,
+    findProspectByIdentity: async (identity) => state.prospects.find((value) => `${value.businessName.toLowerCase()}|${(value.locationText || '').toLowerCase()}` === identity) ?? null,
+    isSuppressed: async (email) => state.suppressions.has(email),
   }
-  return { services: createProspectServices(store), state: () => state }
+  return { services: createProspectServices(store), state: () => state, seedSuppression: (email: string) => state.suppressions.set(email, 'manual') }
 }
 
 async function created(setup: ReturnType<typeof memoryStore>) { return setup.services.createProspect(input()) }
@@ -47,6 +52,15 @@ describe('prospect application services', () => {
     await expect(setup.services.createProspect(input({ publicContactEmail: 'HELLO@PUBLICCOFFEE.EXAMPLE' }))).rejects.toThrow(/already exists/i)
     await expect(setup.services.createProspect(input({ sourceUrl: '' }))).rejects.toThrow(/source evidence/i)
     await expect(setup.services.createProspect(input({ publicContactEmail: 'invalid' }))).rejects.toThrow(/valid publicly/i)
+  })
+  it('rejects duplicate websites and unambiguous business identities', async () => {
+    const setup = memoryStore(); await setup.services.createProspect(input({ websiteUrl: 'https://publiccoffee.example' }))
+    await expect(setup.services.createProspect(input({ publicContactEmail: 'other@example.com', websiteUrl: 'https://publiccoffee.example/menu' }))).rejects.toThrow(/website already exists/i)
+    await expect(setup.services.createProspect(input({ publicContactEmail: 'third@example.com', websiteUrl: null }))).rejects.toThrow(/business identity already exists/i)
+  })
+  it('enforces suppression during intake', async () => {
+    const setup = memoryStore(); setup.seedSuppression('hello@publiccoffee.example')
+    await expect(created(setup)).rejects.toThrow(/suppressed/i)
   })
   it('rolls back creation when its audit fails', async () => {
     const setup = memoryStore('prospect_created')

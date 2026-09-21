@@ -12,6 +12,9 @@ const detail: GrowthProspectDetail = {
   publicContactEmail: 'hello@publiccoffee.example',
   sourceUrl: 'https://publiccoffee.example/contact',
   sourceObservedAt: '2026-09-21T10:00:00.000Z',
+  evidenceNote: 'The contact page lists the observed email.',
+  potentialUseCase: null,
+  emailSourceUrl: 'https://publiccoffee.example/contact',
   personalizationContext: null,
   personalizationEvidence: null,
   rejectionReason: null,
@@ -32,6 +35,7 @@ function setup(authenticated = true) {
     rejectProspect: vi.fn(async (_id: string, reason: string) => { if (!reason.trim()) throw new Error('Invalid qualification transition or rejection reason.'); return prospect }),
     suppressProspect: vi.fn(async () => prospect),
     queueProspect: vi.fn(async () => ({ prospect, attempt: { id: 'attempt-1' } })),
+    createProspect: vi.fn(async () => prospect),
   }
   return { handler: createOperatorConsoleHandler({ authenticated: async () => authenticated, repository, services }), repository, services }
 }
@@ -48,6 +52,10 @@ describe('operator console authentication and reads', () => {
 
   it.each(['prospects/prospect-1/qualify', 'prospects/prospect-1/reject', 'prospects/prospect-1/suppress', 'prospects/prospect-1/queue'])('rejects unauthenticated %s mutations', async (path) => {
     expect((await setup(false).handler(mutation(path, { reason: 'manual' }))).status).toBe(401)
+  })
+
+  it.each(['prospects/discover', 'prospects/import'])('rejects unauthenticated discovery mutation %s', async (path) => {
+    expect((await setup(false).handler(mutation(path, {}))).status).toBe(401)
   })
 
   it('returns correct overview counts and fixed disabled-delivery policy', async () => {
@@ -94,6 +102,13 @@ describe('operator console mutations', () => {
     const state = setup()
     expect((await state.handler(mutation('prospects/prospect-1/qualify', {}, 'https://attacker.example'))).status).toBe(403)
     expect(state.services.qualifyProspect).not.toHaveBeenCalled()
+  })
+
+  it('applies CSRF protection to discovery preview and import', async () => {
+    const state = setup()
+    expect((await state.handler(mutation('prospects/discover', {}, 'https://attacker.example'))).status).toBe(403)
+    expect((await state.handler(mutation('prospects/import', {}, 'https://attacker.example'))).status).toBe(403)
+    expect(state.services.createProspect).not.toHaveBeenCalled()
   })
 
   it('has no unsuppression route', async () => {
