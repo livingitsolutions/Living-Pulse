@@ -96,6 +96,27 @@ describe('public deployment composition', () => {
 })
 
 describe('Growth deployment composition', () => {
+  it('is registered as an npm workspace with dedicated package identity', async () => {
+    const [rootManifestText, growthManifestText, lockText] = await Promise.all([
+      read('package.json'),
+      read(`${growthPackageDirectory}/package.json`),
+      read('package-lock.json'),
+    ])
+    const rootManifest = JSON.parse(rootManifestText) as { workspaces?: string[] }
+    const growthManifest = JSON.parse(growthManifestText) as { name?: string, private?: boolean, dependencies?: Record<string, string> }
+    const lock = JSON.parse(lockText) as { packages: Record<string, { name?: string, link?: boolean, resolved?: string, workspaces?: string[] }> }
+
+    expect(rootManifest.workspaces).toContain(growthPackageDirectory)
+    expect(growthManifest).toEqual({ name: '@living-pulse/growth', private: true })
+    expect(growthManifest.dependencies).toBeUndefined()
+    expect(lock.packages[''].workspaces).toContain(growthPackageDirectory)
+    expect(lock.packages[growthPackageDirectory]).toMatchObject({ name: '@living-pulse/growth' })
+    expect(lock.packages['node_modules/@living-pulse/growth']).toEqual({
+      resolved: growthPackageDirectory,
+      link: true,
+    })
+  })
+
   it('retains every applied migration at its original path and content', async () => {
     const checksums: Record<string, string> = {
       '20260921075739_create_validation_prototype/migration.sql': '95987830ca11fb301aa349430db852dc5a8aa723b7de744c6e683c4d026c006e',
