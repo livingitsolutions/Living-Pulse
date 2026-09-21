@@ -3,6 +3,7 @@ import { Link, Route, Routes, useNavigate, useParams, useSearchParams } from 're
 import { ArrowRight, Check, Clipboard, Download, ExternalLink, Plus, QrCode, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { api } from './api'
+import { poweredByPath, preserveAttribution } from './acquisition'
 import type { FollowUp, Pulse, PulseOption, Results } from './types'
 import { hasEnoughOptions } from './validation'
 
@@ -35,6 +36,7 @@ function OptionEditor({ options, setOptions, min = 2 }: { options: PulseOption[]
 
 function Create() {
   const navigate = useNavigate()
+  const [acquisition] = useState(() => preserveAttribution(window.location.search, sessionStorage))
   const [businessName, setBusinessName] = useState("Antonio's Café")
   const [idea, setIdea] = useState('Sunday Delivery')
   const [question, setQuestion] = useState('Would you use Sunday delivery?')
@@ -44,8 +46,8 @@ function Create() {
   const [followOptions, setFollowOptions] = useState([newOption('Weekly'), newOption('Monthly'), newOption('Occasionally')])
   const [allowUpdates, setAllowUpdates] = useState(false)
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
-  useEffect(() => { void api.event('create_started') }, [])
-  async function submit(e: React.FormEvent) { e.preventDefault(); setError(''); if (!hasEnoughOptions(options)) return setError('Add at least two response options.'); if (hasFollowUp && !hasEnoughOptions(followOptions)) return setError('Add at least two follow-up options.'); setSaving(true); try { const followUp: FollowUp | null = hasFollowUp ? { question: followQuestion, options: followOptions } : null; const pulse = await api.create({ businessName, idea, question, options, followUp, allowUpdates }); navigate(`/published/${pulse.id}?key=${pulse.creatorKey}`) } catch (err) { setError(err instanceof Error ? err.message : 'Could not create Pulse') } finally { setSaving(false) } }
+  useEffect(() => { void api.event('create_started', acquisition?.sourcePulseId, acquisition || undefined) }, [acquisition])
+  async function submit(e: React.FormEvent) { e.preventDefault(); setError(''); if (!hasEnoughOptions(options)) return setError('Add at least two response options.'); if (hasFollowUp && !hasEnoughOptions(followOptions)) return setError('Add at least two follow-up options.'); setSaving(true); try { const followUp: FollowUp | null = hasFollowUp ? { question: followQuestion, options: followOptions } : null; const pulse = await api.create({ businessName, idea, question, options, followUp, allowUpdates }, acquisition); navigate(`/published/${pulse.id}?key=${pulse.creatorKey}`) } catch (err) { setError(err instanceof Error ? err.message : 'Could not create Pulse') } finally { setSaving(false) } }
   return <main className="form-page"><header className="form-nav"><Logo /><span>New Pulse</span></header><div className="form-layout"><aside><p className="eyebrow">Make the decision smaller</p><h1>What do you need to know?</h1><p>Keep it quick. One clear idea gets a clearer signal.</p><div className="step-mark"><b>01</b><span>Write<br />the question</span></div></aside><form onSubmit={submit} className="create-form">
     <label><span>Business name</span><input value={businessName} onChange={(e) => setBusinessName(e.target.value)} maxLength={120} required /></label>
     <label><span>Idea</span><input value={idea} onChange={(e) => setIdea(e.target.value)} maxLength={160} required /></label>
@@ -73,15 +75,17 @@ function PublicPulse() {
   function primary(optionId: string) { setSelected(optionId); void api.event('response_started', id); if (pulse?.followUp) setStage('follow'); else if (pulse?.allowUpdates) setStage('email'); else void finish(optionId) }
   function chooseFollow(optionId: string) { setFollow(optionId); if (pulse?.allowUpdates) setStage('email'); else void finish(selected, optionId) }
   async function finish(optionId = selected, followUpOptionId = follow, submittedEmail?: string) { try { await api.respond(id, { optionId, followUpOptionId: followUpOptionId || undefined, email: submittedEmail || undefined }); setStage('done') } catch (e) { setError(e instanceof Error ? e.message : 'Could not save response') } }
+  const acquisitionPath = poweredByPath(id)
+  function poweredByClick() { void api.event('powered_by_clicked', id, { source: 'powered_by' }) }
   if (error && !pulse) return <main className="public-shell"><div className="public-card"><p className="error">{error}</p><Link to="/">Return home</Link></div></main>
   if (!pulse) return <main className="public-shell"><div className="public-card skeleton"><i /><i /><i /><i /></div></main>
   return <main className="public-shell"><div className="public-top"><Logo /><span>Quick question</span></div><section className="public-card">
     {stage === 'primary' && <><p className="business">{pulse.businessName} is asking</p><h1>{pulse.question}</h1><div className="answer-grid">{pulse.options.map((option) => <button key={option.id} onClick={() => primary(option.id)}>{option.label}<ArrowRight size={20} /></button>)}</div></>}
     {stage === 'follow' && pulse.followUp && <><p className="step-count">One quick follow-up</p><h1>{pulse.followUp.question}</h1><div className="answer-grid">{pulse.followUp.options.map((option) => <button key={option.id} onClick={() => chooseFollow(option.id)}>{option.label}<ArrowRight size={20} /></button>)}</div></>}
     {stage === 'email' && <><p className="step-count">Response saved next</p><h1>Want to know if this launches?</h1><p className="muted">Optional. Your email won't be shown in results.</p><form onSubmit={(e) => { e.preventDefault(); void finish(selected, follow, email) }}><label><span>Email address (optional)</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" /></label><button className="button wide">Notify Me</button></form><button className="skip" onClick={() => void finish()}>Skip</button></>}
-    {stage === 'done' && <div className="thanks"><div className="checkmark"><Check /></div><p className="eyebrow">Response received</p><h1>Thanks for helping {pulse.businessName}.</h1><div className="acquisition"><span>Have a decision of your own?</span><ButtonLink to="/create">Create your own Pulse</ButtonLink></div></div>}
+    {stage === 'done' && <div className="thanks"><div className="checkmark"><Check /></div><p className="eyebrow">Response received</p><h1>Thanks for helping {pulse.businessName}.</h1><div className="acquisition"><span>Have a decision of your own?</span><Link className="button" to={acquisitionPath} onClick={poweredByClick}>Create your own Pulse<ArrowRight size={18} /></Link></div></div>}
     {error && <p className="error" role="alert">{error}</p>}
-  </section><Link className="powered" to="/">Powered by <b>Living Pulse</b></Link></main>
+  </section><Link className="powered" to={acquisitionPath} onClick={poweredByClick}>Powered by <b>Living Pulse</b></Link></main>
 }
 
 function ResultsPage() {
