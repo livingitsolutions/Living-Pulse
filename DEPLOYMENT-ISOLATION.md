@@ -1,5 +1,7 @@
 # Living Pulse deployment isolation
 
+> Database decision update: [docs/architecture/deployment-database-decision.md](./docs/architecture/deployment-database-decision.md) selects a Growth-owned database with a future authenticated server-to-server product boundary. Direct cross-site Netlify Database binding remains not verified.
+
 This repository contains two explicit deployment compositions. They share domain and database code, but they do not share frontend or function entrypoints.
 
 ## Runtime ownership
