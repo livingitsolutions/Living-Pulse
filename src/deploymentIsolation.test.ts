@@ -1,9 +1,12 @@
-import { readFile } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 import { describe, expect, it } from 'vitest'
 import publicApi from '../netlify/functions/api.mjs'
 import growthApi from '../netlify/growth-functions/api.mjs'
 
 const read = (path: string) => readFile(path, 'utf8')
+const exists = (path: string) => access(path).then(() => true, () => false)
+const publicPackageDirectory = 'deploy/public'
+const growthPackageDirectory = 'deploy/growth'
 const operatorPaths = [
   'login',
   'session',
@@ -33,11 +36,17 @@ describe('public deployment composition', () => {
   })
 
   it('packages only the public function directory and requires no operator environment', async () => {
-    const [config, api] = await Promise.all([read('netlify.public.toml'), read('netlify/functions/api.mts')])
+    const [config, api] = await Promise.all([read(`${publicPackageDirectory}/netlify.toml`), read('netlify/functions/api.mts')])
     expect(config).toContain('directory = "netlify/functions"')
     expect(config).toContain('command = "npm run build:public"')
+    expect(config).toContain('publish = "dist-public"')
     expect(config).not.toMatch(/migrat|database/i)
     expect(api).not.toMatch(/operator|acquisitionConsole|LIVING_PULSE_OPERATOR_SECRET|ACQUISITION_SENDING_ENABLED|RESEND_API_KEY/i)
+  })
+
+  it('cannot discover Netlify Database migrations in its package directory', async () => {
+    expect(await exists(`${publicPackageDirectory}/netlify/database/migrations`)).toBe(false)
+    expect(await exists('netlify/database/migrations')).toBe(true)
   })
 
   it('retains public Pulse, Results, response, feedback, lifecycle, and telemetry routes', async () => {
@@ -54,13 +63,20 @@ describe('public deployment composition', () => {
 
 describe('Growth deployment composition', () => {
   it('uses a dedicated frontend entry and private functions directory', async () => {
-    const [entry, config, netlifyConfig] = await Promise.all([read('growth/main.tsx'), read('vite.growth.config.ts'), read('netlify.toml')])
+    const [entry, config, netlifyConfig] = await Promise.all([read('growth/main.tsx'), read('vite.growth.config.ts'), read(`${growthPackageDirectory}/netlify.toml`)])
     expect(entry).toMatch(/GrowthConsole/)
     expect(config).toContain("outDir: '../dist-growth'")
     expect(netlifyConfig).toContain('directory = "netlify/growth-functions"')
     expect(netlifyConfig).toContain('command = "npm run build:growth"')
+    expect(netlifyConfig).toContain('publish = "dist-growth"')
+    expect(netlifyConfig).toContain('path = "netlify/database/migrations"')
     expect(netlifyConfig).not.toMatch(/from = "\/api\/(?:operator|product-service)\/\*"[\s\S]*?status = 404/)
     expect(await read('netlify/growth-functions/api.mts')).toContain("path: ['/api/operator/*', '/api/product-service/*']")
+  })
+
+  it('has no root configuration that can override either package configuration', async () => {
+    expect(await exists('netlify.toml')).toBe(false)
+    expect(await exists('netlify.public.toml')).toBe(false)
   })
 
   it('retains login and session routes without exposing acquisition unauthenticated', async () => {

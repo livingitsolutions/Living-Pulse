@@ -21,13 +21,13 @@ The decision keeps existing data in place, uses one migration owner, avoids an u
 - Initialization: `drizzle({ schema })`; no connection argument is supplied.
 - Schema: `db/schema.ts`.
 - Drizzle Kit: `drizzle.config.ts`, PostgreSQL dialect.
-- Migration output: `netlify/database/migrations`.
+- Migration output: `netlify/database/migrations`, explicitly selected only by `deploy/growth/netlify.toml`.
 - Database package: `@netlify/database` is installed, but application code does not directly call `getDatabase` or `getConnectionString`.
 - Explicit connection environment: no `DATABASE_URL`, PostgreSQL URL, or other connection string is referenced in repository code or configuration.
 - Other clients: none. There is no `pg`, external ORM, or separately initialized database client.
 - Binding ownership: connection information is supplied automatically by the Netlify runtime through the Netlify Database adapter.
 
-Netlify automatically applies migrations found in `netlify/database/migrations` immediately before production publication and for deploy previews. Production deploys use the main database; deploy previews receive database branches. The repository does not contain a switch assigning migrations to only one of two sites.
+Netlify automatically applies discovered migrations immediately before production publication and for deploy previews. Production deploys use the main database; deploy previews receive database branches. Each project now selects a package-local `netlify.toml`; default migration discovery is package-scoped, and only Growth explicitly points to the root migration directory.
 
 ### Database consumers
 
@@ -41,7 +41,7 @@ Netlify automatically applies migrations found in `netlify/database/migrations` 
 | `netlify/growth-functions/api.mts` | GROWTH | Composes operator and acquisition consumers |
 | `scripts/import-prospects.ts` | GROWTH / internal operation | Uses acquisition validation and persistence for explicit internal intake |
 | `db/index.ts` and `db/schema.ts` | SHARED | One adapter and schema used by both compositions |
-| `drizzle.config.ts` and `netlify/database/migrations/*` | MIGRATION / DEPLOYMENT | Schema generation and platform-applied migrations |
+| `drizzle.config.ts`, `netlify/database/migrations/*`, and `deploy/growth/netlify.toml` | MIGRATION / DEPLOYMENT | Schema generation and Growth-only platform-applied migrations |
 
 Pure domain modules and their tests do not instantiate or query a database.
 
