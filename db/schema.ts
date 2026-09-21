@@ -1,7 +1,9 @@
 import { boolean, integer, jsonb, pgTable, serial, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 export type PulseOption = { id: string; label: string }
-export type FollowUp = { question: string; options: PulseOption[] }
+export type FollowUp =
+  | { type?: 'multiple_choice'; question: string; options: PulseOption[] }
+  | { type: 'written_feedback'; question: string }
 
 export const pulses = pgTable('pulses', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -21,6 +23,7 @@ export const responses = pgTable('responses', {
   pulseId: uuid('pulse_id').notNull().references(() => pulses.id, { onDelete: 'cascade' }),
   optionId: text('option_id').notNull(),
   followUpOptionId: text('follow_up_option_id'),
+  followUpText: text('follow_up_text'),
   email: text('email'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
