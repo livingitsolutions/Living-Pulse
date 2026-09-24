@@ -1,13 +1,6 @@
 import { createHash } from 'node:crypto'
-import { createRequire } from 'node:module'
 import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
-
-type AdministrativeClient = MigrationClient & { connect(): Promise<void>; end(): Promise<void> }
-const { Client } = createRequire(import.meta.url)('pg') as {
-  Client: new (options: Record<string, unknown>) => AdministrativeClient
-}
 
 export const MIGRATIONS_DIRECTORY = resolve('deploy/growth/netlify/database/migrations')
 export const LEDGER_SCHEMA = 'living_pulse_migrations'
@@ -41,6 +34,10 @@ export interface MigrationClient {
 export type MigrationStatus = {
   applied: AppliedMigration[]
   pending: Migration[]
+}
+
+export type MigrationApplyStatus = MigrationStatus & {
+  appliedThisInvocation: number
 }
 
 export class MigrationInvariantError extends Error {}
@@ -171,7 +168,7 @@ export class MigrationRunner {
     })
   }
 
-  async apply(): Promise<MigrationStatus> {
+  async apply(): Promise<MigrationApplyStatus> {
     return this.lockRunner(this.client, async () => {
       const migrations = await discoverMigrations(this.migrationDirectory)
       await createLedger(this.client)
@@ -196,7 +193,11 @@ export class MigrationRunner {
 
       const finalApplied = await readLedger(this.client)
       validateLedger(migrations, finalApplied)
-      return { applied: finalApplied, pending: migrations.slice(finalApplied.length) }
+      return {
+        applied: finalApplied,
+        pending: migrations.slice(finalApplied.length),
+        appliedThisInvocation: finalApplied.length - applied.length,
+      }
     })
   }
 }
@@ -217,28 +218,4 @@ export function migrationCommandEnvironment(command: Command, environment: NodeJ
     throw new MigrationInvariantError(`Production apply requires DB_MIGRATION_CONFIRM=${PRODUCTION_CONFIRMATION}.`)
   }
   return { connectionString, target }
-}
-
-async function main() {
-  const command = process.argv[2]
-  if (command !== 'status' && command !== 'apply') throw new MigrationInvariantError('Expected command: status or apply.')
-  const environment = migrationCommandEnvironment(command, process.env)
-  const client = new Client({ connectionString: environment.connectionString, connectionTimeoutMillis: 10_000, application_name: 'living-pulse-migrations' })
-  await client.connect()
-  try {
-    const runner = new MigrationRunner(client)
-    const result = command === 'status' ? await runner.status() : await runner.apply()
-    console.log(JSON.stringify({ command, target: environment.target, applied: result.applied.length, pending: result.pending.length }))
-  } finally {
-    await client.end()
-  }
-}
-
-const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : ''
-if (import.meta.url === invokedPath) {
-  main().catch((error: unknown) => {
-    const detail = error instanceof MigrationInvariantError ? ` ${error.message}` : ''
-    console.error(`Database migration command failed.${detail}`)
-    process.exitCode = 1
-  })
 }
