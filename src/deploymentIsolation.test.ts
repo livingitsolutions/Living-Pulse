@@ -140,11 +140,14 @@ describe('Growth deployment composition', () => {
     )
   })
 
-  it('uses a dedicated frontend entry and private functions directory', async () => {
-    const [entry, config, netlifyConfig, rootManifest, growthManifest] = await Promise.all([
+  it('uses the canonical Growth config with a narrow workspace compatibility entry point', async () => {
+    const [entry, config, netlifyConfig, compatibilityConfig, publicConfig, isolatedPublicConfig, rootManifest, growthManifest] = await Promise.all([
       read('growth/main.tsx'),
       read('vite.growth.config.ts'),
       read('netlify.growth.toml'),
+      read(`${growthPackageDirectory}/netlify.toml`),
+      read(`${publicPackageDirectory}/netlify.toml`),
+      read(`${isolatedPublicBase}/netlify.toml`),
       read('package.json'),
       read(`${growthPackageDirectory}/package.json`),
     ])
@@ -154,7 +157,16 @@ describe('Growth deployment composition', () => {
     expect(netlifyConfig).toContain('command = "npm run build:growth"')
     expect(netlifyConfig).toContain('publish = "dist-growth"')
     expect(netlifyConfig).not.toMatch(/database|migrat/i)
-    expect(await exists(`${growthPackageDirectory}/netlify.toml`)).toBe(false)
+    expect(compatibilityConfig).toContain('netlify.growth.toml configuration')
+    expect(compatibilityConfig).toContain('directory = "netlify/growth-functions"')
+    expect(compatibilityConfig).toContain('command = "npm run build:growth"')
+    expect(compatibilityConfig).toContain('publish = "dist-growth"')
+    expect(compatibilityConfig).toContain('[database.migrations]')
+    expect(compatibilityConfig).toContain('path = "netlify/database/migrations"')
+    expect(compatibilityConfig).not.toMatch(/netlify\/functions|build:public|dist-public|deploy\/public|VITE_[A-Z0-9_]*(?:DATABASE|POSTGRES)|DATABASE_URL|NETLIFY_DATABASE_URL/)
+    for (const config of [publicConfig, isolatedPublicConfig]) {
+      expect(config).not.toMatch(/netlify\/growth-functions|build:growth|dist-growth|database|migrat|VITE_[A-Z0-9_]*(?:DATABASE|POSTGRES)|DATABASE_URL|NETLIFY_DATABASE_URL/i)
+    }
     expect(JSON.parse(rootManifest).workspaces).toContain(growthPackageDirectory)
     expect(JSON.parse(growthManifest).name).toBe('living-pulse-growth')
     expect(netlifyConfig).not.toMatch(/from = "\/api\/(?:operator|product-service)\/\*"[\s\S]*?status = 404/)

@@ -15,13 +15,16 @@
     "lint": "eslint .",
     "test": "node scripts/verify-public-site.mjs && vitest run",
     "sync:public-site": "node scripts/verify-public-site.mjs --write",
-    "prospects:import": "vite-node scripts/import-prospects.ts"
+    "prospects:import": "vite-node scripts/import-prospects.ts",
+    "db:migrate:status": "vite-node scripts/db-migrate.ts status",
+    "db:migrate:apply": "vite-node scripts/db-migrate.ts apply"
   },
   "dependencies": {
     "@netlify/database": "latest",
     "@netlify/functions": "latest",
     "drizzle-orm": "beta",
     "lucide-react": "^0.468.0",
+    "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -30,6 +33,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.17",
     "@eslint/js": "^9.17.0",
+    "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^22.10.0",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.0.0",
@@ -41,7 +45,6 @@
     "eslint-plugin-react-refresh": "^0.4.16",
     "globals": "^15.14.0",
     "tailwindcss": "^4.0.0",
-    "@tailwindcss/vite": "^4.0.0",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.18.0",
     "vite": "^6.0.5",
