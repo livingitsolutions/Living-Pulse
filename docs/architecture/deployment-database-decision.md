@@ -21,7 +21,7 @@ The decision keeps existing data in place, uses one migration owner, avoids an u
 - Initialization: `drizzle({ schema })`; no connection argument is supplied.
 - Schema: `db/schema.ts`.
 - Drizzle Kit: `drizzle.config.ts`, PostgreSQL dialect.
-- Migration output: `deploy/growth/netlify/database/migrations`, explicitly selected only by `deploy/growth/netlify.toml` using a repository-root-relative path. The conventional root path is a compatibility symlink to this directory for applied-migration validation.
+- Migration output: `deploy/growth/netlify/database/migrations`. The selected repository-root `netlify.growth.toml` uses Netlify's conventional `netlify/database/migrations` discovery path, which is a compatibility symlink to this directory.
 - Database package: `@netlify/database` is installed, but application code does not directly call `getDatabase` or `getConnectionString`.
 - Explicit connection environment: no `DATABASE_URL`, PostgreSQL URL, or other connection string is referenced in repository code or configuration.
 - Other clients: none. There is no `pg`, external ORM, or separately initialized database client.
@@ -41,7 +41,7 @@ Netlify automatically applies discovered migrations immediately before productio
 | `netlify/growth-functions/api.mts` | GROWTH | Composes operator and acquisition consumers |
 | `scripts/import-prospects.ts` | GROWTH / internal operation | Uses acquisition validation and persistence for explicit internal intake |
 | `db/index.ts` and `db/schema.ts` | SHARED | One adapter and schema used by both compositions |
-| `drizzle.config.ts`, `deploy/growth/netlify/database/migrations/*`, and `deploy/growth/netlify.toml` | MIGRATION / DEPLOYMENT | Schema generation and Growth-only platform-applied migrations |
+| `drizzle.config.ts`, `deploy/growth/netlify/database/migrations/*`, and `netlify.growth.toml` | MIGRATION / DEPLOYMENT | Schema generation and Growth-only platform-applied migrations |
 
 Pure domain modules and their tests do not instantiate or query a database.
 

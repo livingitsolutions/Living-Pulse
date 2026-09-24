@@ -1,0 +1,36 @@
+functionsDirectory = "/opt/build/repo/netlify/growth-functions"
+functionsDirectoryOrigin = "ui"
+plugins = []
+headers = []
+redirects = []
+
+[database]
+
+[database.migrations]
+path = "/opt/build/repo/deploy/growth/netlify/database/migrations"
+
+[build]
+publish = "/opt/build/repo/deploy/growth/dist/client"
+publishOrigin = "ui"
+commandOrigin = "ui"
+base = "/opt/build/repo"
+command = "npm run build:growth"
+functions = "/opt/build/repo/netlify/growth-functions"
+
+[build.environment]
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]
+
+[functions]
+
+[functions."*"]

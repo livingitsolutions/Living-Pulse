@@ -107,11 +107,11 @@ describe('Growth deployment composition', () => {
     const lock = JSON.parse(lockText) as { packages: Record<string, { name?: string, link?: boolean, resolved?: string, workspaces?: string[] }> }
 
     expect(rootManifest.workspaces).toContain(growthPackageDirectory)
-    expect(growthManifest).toEqual({ name: '@living-pulse/growth', private: true })
+    expect(growthManifest).toMatchObject({ name: 'living-pulse-growth', private: true })
     expect(growthManifest.dependencies).toBeUndefined()
     expect(lock.packages[''].workspaces).toContain(growthPackageDirectory)
-    expect(lock.packages[growthPackageDirectory]).toMatchObject({ name: '@living-pulse/growth' })
-    expect(lock.packages['node_modules/@living-pulse/growth']).toEqual({
+    expect(lock.packages[growthPackageDirectory]).toMatchObject({ name: 'living-pulse-growth' })
+    expect(lock.packages['node_modules/living-pulse-growth']).toEqual({
       resolved: growthPackageDirectory,
       link: true,
     })
@@ -144,7 +144,7 @@ describe('Growth deployment composition', () => {
     const [entry, config, netlifyConfig, rootManifest, growthManifest] = await Promise.all([
       read('growth/main.tsx'),
       read('vite.growth.config.ts'),
-      read(`${growthPackageDirectory}/netlify.toml`),
+      read('netlify.growth.toml'),
       read('package.json'),
       read(`${growthPackageDirectory}/package.json`),
     ])
@@ -153,16 +153,18 @@ describe('Growth deployment composition', () => {
     expect(netlifyConfig).toContain('directory = "netlify/growth-functions"')
     expect(netlifyConfig).toContain('command = "npm run build:growth"')
     expect(netlifyConfig).toContain('publish = "dist-growth"')
-    expect(netlifyConfig).toContain('path = "deploy/growth/netlify/database/migrations"')
+    expect(netlifyConfig).not.toMatch(/database|migrat/i)
+    expect(await exists(`${growthPackageDirectory}/netlify.toml`)).toBe(false)
     expect(JSON.parse(rootManifest).workspaces).toContain(growthPackageDirectory)
     expect(JSON.parse(growthManifest).name).toBe('living-pulse-growth')
     expect(netlifyConfig).not.toMatch(/from = "\/api\/(?:operator|product-service)\/\*"[\s\S]*?status = 404/)
     expect(await read('netlify/growth-functions/api.mts')).toContain("path: ['/api/operator/*', '/api/product-service/*']")
   })
 
-  it('has no root configuration that can override either package configuration', async () => {
+  it('keeps the named root Growth configuration isolated from Public', async () => {
     expect(await exists('netlify.toml')).toBe(false)
     expect(await exists('netlify.public.toml')).toBe(false)
+    expect(await exists('netlify.growth.toml')).toBe(true)
   })
 
   it('retains login and session routes without exposing acquisition unauthenticated', async () => {
