@@ -1,3 +1,7 @@
+# Compatibility entry point for workspace-filtered Netlify CLI deploys.
+# The Growth project itself selects the canonical repository-root
+# netlify.growth.toml configuration.
+
 [build]
   command = "npm run build:growth"
   publish = "dist-growth"
@@ -6,7 +10,7 @@
   directory = "netlify/growth-functions"
 
 [database.migrations]
-  path = "deploy/growth/netlify/database/migrations"
+  path = "netlify/database/migrations"
 
 [[redirects]]
   from = "/*"
