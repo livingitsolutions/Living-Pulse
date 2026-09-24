@@ -16,8 +16,8 @@
     "test": "node scripts/verify-public-site.mjs && vitest run",
     "sync:public-site": "node scripts/verify-public-site.mjs --write",
     "prospects:import": "vite-node scripts/import-prospects.ts",
-    "db:migrate:status": "vite-node scripts/db-migrate.ts status",
-    "db:migrate:apply": "vite-node scripts/db-migrate.ts apply"
+    "db:migrate:status": "vite-node scripts/db-migrate-cli-entry.ts status",
+    "db:migrate:apply": "vite-node scripts/db-migrate-cli-entry.ts apply"
   },
   "dependencies": {
     "@netlify/database": "latest",
